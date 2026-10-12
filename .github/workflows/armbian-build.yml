@@ -1,0 +1,302 @@
+name: Armbian Build Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      filesystem:
+        description: "Filesystem target"
+        required: true
+        type: choice
+        default: ext4
+        options:
+          - ext4
+          - btrfs
+          - both
+      profile:
+        description: "Build profiles"
+        required: true
+        type: choice
+        default: server
+        options:
+          - server
+          - minimal
+          - applications
+          - desktop
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: armbian-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Generate build matrix
+        id: matrix
+        env:
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          PROFILE_INPUT: ${{ inputs.profile }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          releases = ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"]
+          filesystems = (
+              ["ext4", "btrfs"]
+              if os.environ["FILESYSTEM_INPUT"] == "both"
+              else [os.environ["FILESYSTEM_INPUT"]]
+          )
+          selected_profile = os.environ["PROFILE_INPUT"]
+          profiles = ["server", "minimal", "applications", "desktop"] if selected_profile == "all" else [selected_profile]
+
+          matrix = []
+          for fs in filesystems:
+              for profile in profiles:
+                  if profile in ("server", "minimal"):
+                      for release in releases:
+                          matrix.append({
+                              "filesystem": fs,
+                              "profile": profile,
+                              "variant": profile,
+                              "release": release,
+                              "image_size": 4096,
+                              "build_desktop": "no",
+                              "build_minimal": "yes" if profile == "minimal" else "no",
+                              "extension": "",
+                              "desktop_env": ""
+                          })
+                  elif profile == "applications":
+                      for variant, extension in [
+                          ("home-assistant", "applications-ha"),
+                          ("openmediavault", "applications-omv"),
+                          ("kali", "applications-kali"),
+                          ("docker-ce", "docker-ce"),
+                      ]:
+                          matrix.append({
+                              "filesystem": fs,
+                              "profile": "applications",
+                              "variant": variant,
+                              "release": "trixie",
+                              "image_size": 8192,
+                              "build_desktop": "no",
+                              "build_minimal": "no",
+                              "extension": extension,
+                              "desktop_env": ""
+                          })
+                  elif profile == "desktop":
+                      for desktop in [
+                          "xfce", "mate", "gnome", "cinnamon", "kde-plasma",
+                          "kde-neon", "i3-wm", "enlightenment", "xmonad",
+                          "budgie", "deepin"
+                      ]:
+                          matrix.append({
+                              "filesystem": fs,
+                              "profile": "desktop",
+                              "variant": desktop,
+                              "release": "trixie",
+                              "image_size": 8192,
+                              "build_desktop": "yes",
+                              "build_minimal": "no",
+                              "extension": "",
+                              "desktop_env": desktop
+                          })
+
+          print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
+          print("count=" + str(len(matrix)))
+          PY
+      - name: Show selected matrix
+        env:
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          PROFILE_INPUT: ${{ inputs.profile }}
+        run: |
+          echo "Filesystem: $FILESYSTEM_INPUT"
+          echo "Profile: $PROFILE_INPUT"
+          echo "Selected build matrix generated."
+
+  create_release:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Create release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          tag="armbian-build-${RUN_ID}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; reusing it."
+          else
+            gh release create "$tag" \
+              --title "Armbian aml-s9xx-box build #${RUN_NUMBER}" \
+              --notes "Automated Armbian build batch. Assets are named by filesystem, profile, variant, and release." \
+              --prerelease \
+              --latest=false
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [prepare, create_release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    name: ${{ matrix.filesystem }} / ${{ matrix.profile }} / ${{ matrix.variant }} / ${{ matrix.release }}
+    steps:
+      - name: Maximize available build disk
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 512
+          swap-size-mb: 1024
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+          remove-docker-images: "true"
+
+      - name: Show runner resources
+        run: |
+          echo "=== Disk ==="
+          df -h /
+          df -h "$GITHUB_WORKSPACE"
+          echo "=== Memory ==="
+          free -h
+          echo "=== Docker ==="
+          docker system df || true
+
+      - name: Checkout Armbian builder and local customizations
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check custom board configuration
+        run: |
+          test -f config/boards/aml-s9xx-box.tvb || {
+            echo "::error::config/boards/aml-s9xx-box.tvb is missing. Commit the custom board file to this repository."
+            exit 1
+          }
+          echo "Custom board configuration found."
+          if [[ -d userpatches ]]; then
+            echo "userpatches directory found."
+          else
+            echo "No userpatches directory in checkout; continuing."
+          fi
+
+      - name: Check Btrfs support on runner
+        if: matrix.filesystem == 'btrfs'
+        run: |
+          sudo modprobe btrfs || true
+          if [[ ! -d /sys/module/btrfs ]]; then
+            echo "::error::The GitHub runner kernel does not expose Btrfs support; cannot run ROOTFS_TYPE=btrfs on this runner."
+            exit 1
+          fi
+          echo "Btrfs kernel support is available."
+
+      - name: Build Armbian image
+        env:
+          FS: ${{ matrix.filesystem }}
+          PROFILE: ${{ matrix.profile }}
+          VARIANT: ${{ matrix.variant }}
+          RELEASE: ${{ matrix.release }}
+          IMAGE_SIZE: ${{ matrix.image_size }}
+          BUILD_DESKTOP: ${{ matrix.build_desktop }}
+          BUILD_MINIMAL: ${{ matrix.build_minimal }}
+          EXTENSION: ${{ matrix.extension }}
+          DESKTOP_ENV: ${{ matrix.desktop_env }}
+        run: |
+          set -o pipefail
+          args=(
+            "BOARD=aml-s9xx-box"
+            "BOOTSIZE=256"
+            "FIXED_IMAGE_SIZE=${IMAGE_SIZE}"
+            "ROOTFS_TYPE=${FS}"
+            "BRANCH=current"
+            "BUILD_DESKTOP=${BUILD_DESKTOP}"
+            "BUILD_MINIMAL=${BUILD_MINIMAL}"
+            "COMPRESS_OUTPUTIMAGE=sha,xz"
+            "IMAGE_XZ_COMPRESSION_RATIO=0"
+            "KERNEL_GIT=shallow"
+          )
+
+          # Preserve the user's original options: KERNEL_CONFIGURE=no for
+          # server, minimal, and application builds; desktop commands omit it.
+          if [[ "$PROFILE" != "desktop" ]]; then
+            args+=("KERNEL_CONFIGURE=no")
+          fi
+          if [[ -n "$EXTENSION" ]]; then
+            args+=("ENABLE_EXTENSIONS=${EXTENSION}")
+          fi
+          if [[ "$PROFILE" == "desktop" ]]; then
+            args+=("DESKTOP_ENVIRONMENT=${DESKTOP_ENV}" "DESKTOP_TIER=minimal")
+          fi
+          args+=("RELEASE=${RELEASE}")
+
+          printf 'Running: ./compile.sh build'
+          printf ' %q' "${args[@]}"
+          printf '\n'
+
+          ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
+
+      - name: Prepare image and checksum for release
+        if: success()
+        env:
+          FS: ${{ matrix.filesystem }}
+          PROFILE: ${{ matrix.profile }}
+          VARIANT: ${{ matrix.variant }}
+          RELEASE: ${{ matrix.release }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          image="$(find output/images -maxdepth 1 -type f \( -name '*.img.xz' -o -name '*.img' \) -print -quit)"
+          if [[ -z "$image" ]]; then
+            echo "::error::No .img.xz or .img file found in output/images."
+            find output/images -maxdepth 1 -type f -print || true
+            exit 1
+          fi
+
+          if [[ "$image" == *.img.xz ]]; then
+            suffix="img.xz"
+          else
+            suffix="img"
+          fi
+
+          asset="aml-s9xx-box-${FS}-${RELEASE}-${PROFILE}-${VARIANT}.${suffix}"
+          cp "$image" "dist/$asset"
+          sha256sum "dist/$asset" > "dist/${asset}.sha256"
+          ls -lh dist/
+
+      - name: Upload image and checksum to GitHub Release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.create_release.outputs.tag }}
+        run: |
+          gh release upload "$RELEASE_TAG" dist/* --clobber
+
+      - name: Upload build log as Actions artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-${{ matrix.filesystem }}-${{ matrix.profile }}-${{ matrix.variant }}-${{ matrix.release }}
+          path: |
+            build-${{ matrix.filesystem }}-${{ matrix.profile }}-${{ matrix.variant }}-${{ matrix.release }}.log
+            output/logs/*.log.ans
+          if-no-files-found: ignore
+          retention-days: 7
