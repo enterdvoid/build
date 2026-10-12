@@ -1,4 +1,4 @@
-name: Armbian Build Matrix
+name: DBAI Armbian Build
 
 on:
   workflow_dispatch:
@@ -12,23 +12,107 @@ on:
           - ext4
           - btrfs
           - both
-      profile:
-        description: "Build profiles"
+      all_build_types:
+        description: "Build semua tipe firmware (mengabaikan checkbox lainnya)"
         required: true
-        type: choice
-        default: server
-        options:
-          - server
-          - minimal
-          - applications
-          - desktop
-          - all
+        type: boolean
+        default: false
+      server:
+        description: "Server: semua 6 release"
+        required: true
+        type: boolean
+        default: false
+      minimal:
+        description: "Minimal: semua 6 release"
+        required: true
+        type: boolean
+        default: false
+      home_assistant:
+        description: "Applications: Home Assistant (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      openmediavault:
+        description: "Applications: OpenMediaVault (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      kali:
+        description: "Applications: Kali (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      docker_ce:
+        description: "Applications: Docker CE (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      all_desktops:
+        description: "Build semua 11 desktop environment (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_xfce:
+        description: "Desktop: XFCE (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_mate:
+        description: "Desktop: MATE (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_gnome:
+        description: "Desktop: GNOME (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_cinnamon:
+        description: "Desktop: Cinnamon (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_kde_plasma:
+        description: "Desktop: KDE Plasma (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_kde_neon:
+        description: "Desktop: KDE Neon (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_i3_wm:
+        description: "Desktop: i3-wm (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_enlightenment:
+        description: "Desktop: Enlightenment (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_xmonad:
+        description: "Desktop: Xmonad (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_budgie:
+        description: "Desktop: Budgie (Trixie)"
+        required: true
+        type: boolean
+        default: false
+      desktop_deepin:
+        description: "Desktop: Deepin (Trixie)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: armbian-build-${{ github.ref }}
+  group: dbai-armbian-build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -41,83 +125,95 @@ jobs:
         id: matrix
         env:
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
-          PROFILE_INPUT: ${{ inputs.profile }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
+          SERVER: ${{ inputs.server }}
+          MINIMAL: ${{ inputs.minimal }}
+          HOME_ASSISTANT: ${{ inputs.home_assistant }}
+          OPENMEDIAVAULT: ${{ inputs.openmediavault }}
+          KALI: ${{ inputs.kali }}
+          DOCKER_CE: ${{ inputs.docker_ce }}
+          ALL_DESKTOPS: ${{ inputs.all_desktops }}
+          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
+          DESKTOP_MATE: ${{ inputs.desktop_mate }}
+          DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
+          DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
+          DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
+          DESKTOP_KDE_NEON: ${{ inputs.desktop_kde_neon }}
+          DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
+          DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
+          DESKTOP_XMONAD: ${{ inputs.desktop_xmonad }}
+          DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
 
           releases = ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"]
-          filesystems = (
-              ["ext4", "btrfs"]
-              if os.environ["FILESYSTEM_INPUT"] == "both"
-              else [os.environ["FILESYSTEM_INPUT"]]
-          )
-          selected_profile = os.environ["PROFILE_INPUT"]
-          profiles = ["server", "minimal", "applications", "desktop"] if selected_profile == "all" else [selected_profile]
+          filesystems = ["ext4", "btrfs"] if os.environ["FILESYSTEM_INPUT"] == "both" else [os.environ["FILESYSTEM_INPUT"]]
+          truthy = lambda name: os.environ.get(name, "false").lower() == "true"
+          all_types = truthy("ALL_BUILD_TYPES")
+
+          selected = {
+              "server": all_types or truthy("SERVER"),
+              "minimal": all_types or truthy("MINIMAL"),
+          }
+          app_variants = [
+              ("home-assistant", "applications-ha", "HOME_ASSISTANT"),
+              ("openmediavault", "applications-omv", "OPENMEDIAVAULT"),
+              ("kali", "applications-kali", "KALI"),
+              ("docker-ce", "docker-ce", "DOCKER_CE"),
+          ]
+          desktop_variants = [
+              ("xfce", "DESKTOP_XFCE"), ("mate", "DESKTOP_MATE"),
+              ("gnome", "DESKTOP_GNOME"), ("cinnamon", "DESKTOP_CINNAMON"),
+              ("kde-plasma", "DESKTOP_KDE_PLASMA"), ("kde-neon", "DESKTOP_KDE_NEON"),
+              ("i3-wm", "DESKTOP_I3_WM"), ("enlightenment", "DESKTOP_ENLIGHTENMENT"),
+              ("xmonad", "DESKTOP_XMONAD"), ("budgie", "DESKTOP_BUDGIE"),
+              ("deepin", "DESKTOP_DEEPIN"),
+          ]
+          selected_apps = [(v, e) for v, e, key in app_variants if all_types or truthy(key)]
+          selected_desktops = [v for v, key in desktop_variants if all_types or truthy("ALL_DESKTOPS") or truthy(key)]
 
           matrix = []
           for fs in filesystems:
-              for profile in profiles:
-                  if profile in ("server", "minimal"):
-                      for release in releases:
-                          matrix.append({
-                              "filesystem": fs,
-                              "profile": profile,
-                              "variant": profile,
-                              "release": release,
-                              "image_size": 4096,
-                              "build_desktop": "no",
-                              "build_minimal": "yes" if profile == "minimal" else "no",
-                              "extension": "",
-                              "desktop_env": ""
-                          })
-                  elif profile == "applications":
-                      for variant, extension in [
-                          ("home-assistant", "applications-ha"),
-                          ("openmediavault", "applications-omv"),
-                          ("kali", "applications-kali"),
-                          ("docker-ce", "docker-ce"),
-                      ]:
-                          matrix.append({
-                              "filesystem": fs,
-                              "profile": "applications",
-                              "variant": variant,
-                              "release": "trixie",
-                              "image_size": 8192,
-                              "build_desktop": "no",
-                              "build_minimal": "no",
-                              "extension": extension,
-                              "desktop_env": ""
-                          })
-                  elif profile == "desktop":
-                      for desktop in [
-                          "xfce", "mate", "gnome", "cinnamon", "kde-plasma",
-                          "kde-neon", "i3-wm", "enlightenment", "xmonad",
-                          "budgie", "deepin"
-                      ]:
-                          matrix.append({
-                              "filesystem": fs,
-                              "profile": "desktop",
-                              "variant": desktop,
-                              "release": "trixie",
-                              "image_size": 8192,
-                              "build_desktop": "yes",
-                              "build_minimal": "no",
-                              "extension": "",
-                              "desktop_env": desktop
-                          })
+              for profile in ("server", "minimal"):
+                  if not selected[profile]:
+                      continue
+                  for release in releases:
+                      matrix.append({
+                          "filesystem": fs, "profile": profile, "variant": profile,
+                          "release": release, "image_size": 4096,
+                          "build_desktop": "no", "build_minimal": "yes" if profile == "minimal" else "no",
+                          "extension": "", "desktop_env": ""
+                      })
+              for variant, extension in selected_apps:
+                  matrix.append({
+                      "filesystem": fs, "profile": "applications", "variant": variant,
+                      "release": "trixie", "image_size": 8192,
+                      "build_desktop": "no", "build_minimal": "no",
+                      "extension": extension, "desktop_env": ""
+                  })
+              for desktop in selected_desktops:
+                  matrix.append({
+                      "filesystem": fs, "profile": "desktop", "variant": desktop,
+                      "release": "trixie", "image_size": 8192,
+                      "build_desktop": "yes", "build_minimal": "no",
+                      "extension": "", "desktop_env": desktop
+                  })
 
+          if not matrix:
+              raise SystemExit("Tidak ada build yang dipilih. Centang minimal satu tipe build atau 'Build semua tipe firmware'.")
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
           print("count=" + str(len(matrix)))
           PY
       - name: Show selected matrix
         env:
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
-          PROFILE_INPUT: ${{ inputs.profile }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
         run: |
           echo "Filesystem: $FILESYSTEM_INPUT"
-          echo "Profile: $PROFILE_INPUT"
-          echo "Selected build matrix generated."
+          echo "Build all types: $ALL_BUILD_TYPES"
+          echo "Build matrix generated."
 
   create_release:
     needs: prepare
@@ -135,13 +231,13 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
-          tag="armbian-build-${RUN_ID}"
+          tag="dbai-armbian-build-${RUN_ID}"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists; reusing it."
           else
             gh release create "$tag" \
-              --title "Armbian aml-s9xx-box build #${RUN_NUMBER}" \
-              --notes "Automated Armbian build batch. Assets are named by filesystem, profile, variant, and release." \
+              --title "DBAI Armbian Build #${RUN_NUMBER}" \
+              --notes "Automated DBAI Armbian build batch. Assets are named by filesystem, profile, variant, and release." \
               --prerelease \
               --latest=false
           fi
