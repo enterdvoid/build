@@ -168,7 +168,7 @@ jobs:
           DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, os
+          import json, os, sys
 
           release_groups = {
               "all": ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"],
@@ -255,7 +255,7 @@ jobs:
                       })
 
           full_matrix_count = len(matrix)
-          print(f"Full selected matrix: {full_matrix_count} jobs for OS group '{release_group}' and filesystem(s): {', '.join(filesystems)}")
+          print(f"Full selected matrix: {full_matrix_count} jobs for OS group '{release_group}' and filesystem(s): {', '.join(filesystems)}", file=sys.stderr)
           if truthy("TEST_ONLY"):
               matrix = [
                   job for job in matrix
@@ -266,12 +266,12 @@ jobs:
               ]
               if len(matrix) != 1:
                   raise SystemExit(f"Regression filter expected one XFCE/Trixie/ext4 job, got {len(matrix)}")
-              print(f"::notice::Matrix expansion validated ({full_matrix_count} jobs); running only one regression build.")
+              print(f"::notice::Matrix expansion validated ({full_matrix_count} jobs); running only one regression build.", file=sys.stderr)
           if not matrix:
               raise SystemExit("Tidak ada build yang dipilih. Pilih satu atau beberapa profil image.")
           if len(matrix) > 256:
               raise SystemExit(f"Matriks menghasilkan {len(matrix)} job; batas GitHub Actions adalah 256.")
-          print(f"Jobs submitted to GitHub Actions: {len(matrix)}")
+          print(f"Jobs submitted to GitHub Actions: {len(matrix)}", file=sys.stderr)
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
           print("count=" + str(len(matrix)))
           PY
