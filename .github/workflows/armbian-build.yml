@@ -911,7 +911,20 @@ jobs:
 
           rm -rf checksum-input legacy-manifests
           mkdir -p checksum-input legacy-manifests
-          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input
+          if ! gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input; then
+            # A prior attempt may already have consolidated and deleted the individual sidecars.
+            echo "No individual sidecars downloaded; trying the existing SHA256SUMS.txt."
+            rm -f checksum-input/*
+            gh release download "$RELEASE_TAG" --pattern 'SHA256SUMS.txt' --dir checksum-input
+            if [[ ! -s checksum-input/SHA256SUMS.txt ]]; then
+              echo "::error::Neither per-image checksum sidecars nor SHA256SUMS.txt are available."
+              exit 1
+            fi
+            while read -r digest asset_name; do
+              [[ -n "$digest" && -n "$asset_name" ]] || continue
+              printf '%s  %s\n' "$digest" "$asset_name" > "checksum-input/$asset_name.sha256"
+            done < checksum-input/SHA256SUMS.txt
+          fi
 
           # Build portable combined sums and per-image manifests using the corrected asset names.
           : > SHA256SUMS.txt
