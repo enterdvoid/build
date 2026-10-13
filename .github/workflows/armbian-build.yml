@@ -231,6 +231,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
           RUN_STARTED_AT: ${{ github.run_started_at }}
+          SOURCE_SHA: ${{ github.sha }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
@@ -285,7 +286,7 @@ jobs:
           if not builds: builds.append('No build type recognized; check workflow inputs')
           lines = ['# DBAI Armbian Build', '', '## Build selection', '', '- Target filesystem: ' + ', '.join(filesystems)]
           lines += ['- ' + item for item in builds]
-          lines += ['', '## Common parameters', '', '- Board: `aml-s9xx-box`', '- Kernel branch: `current`', '- Boot partition request: 256 MiB', '- Requested image size: Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB', '- Compression: XZ image when produced by the builder, plus SHA-256 checksum', '', '## Important notes', '', '- This release documents selected workflow inputs; only successful jobs upload firmware and checksums.', '- Actual kernel version, compressed file size, checksum, and job result are defined by each individual job log and asset.', '- Requested image size is not the compressed `.img.xz` download size.', '- Build logs and post-build resource reports are available as Actions artifacts when the relevant steps run.', '', '- Workflow run: https://github.com/' + os.environ.get('GITHUB_REPOSITORY','') + '/actions/runs/' + os.environ.get('RUN_ID',''), '- Run number: ' + os.environ.get('RUN_NUMBER',''), '- Workflow started (UTC): ' + os.environ.get('RUN_STARTED_AT','')]
+          lines += ['', '## Common parameters', '', '- Board: `aml-s9xx-box`', '- Source commit: `' + os.environ.get('SOURCE_SHA','') + '`', '- Kernel branch: `current`', '- Boot partition request: 256 MiB', '- Requested image size: Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB', '- Compression: XZ image when produced by the builder, plus SHA-256 checksum', '', '## Important notes', '', '- This release documents selected workflow inputs; only successful jobs upload firmware and checksums.', '- Actual kernel version, compressed file size, checksum, and job result are defined by each individual job log and asset.', '- Requested image size is not the compressed `.img.xz` download size.', '- Build logs and post-build resource reports are available as Actions artifacts when the relevant steps run.', '', '- Workflow run: https://github.com/' + os.environ.get('GITHUB_REPOSITORY','') + '/actions/runs/' + os.environ.get('RUN_ID',''), '- Run number: ' + os.environ.get('RUN_NUMBER',''), '- Workflow started (UTC): ' + os.environ.get('RUN_STARTED_AT','')]
           print('\n'.join(lines))
           PY
           if gh release view "$tag" >/dev/null 2>&1; then
@@ -693,7 +694,7 @@ jobs:
           else:
               out.append('- No additional Release assets.')
           out += ['', '### Build notes', '', '- File sizes in the table are the actual compressed Release asset sizes; they are not the requested raw image size.', '- Checksums are read from the uploaded `.sha256` files. If a checksum value is not shown, download the matching `.sha256` asset.', '- Logs, runner specifications, and the **AFTER BUILD (POST-BUILD)** storage report are available from the Actions run when those steps completed.', '', f'- **Actions run:** https://github.com/{os.environ.get("GITHUB_REPOSITORY", "")}/actions/runs/{os.environ.get("RUN_ID", "")}', '']
-          print(body + '\\n\\n' + '\\n'.join(out))
+          print(body + '\n\n' + '\n'.join(out))
           PY
           gh release edit "$RELEASE_TAG" --notes-file final-notes.md
           {
