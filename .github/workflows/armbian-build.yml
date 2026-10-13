@@ -573,7 +573,7 @@ jobs:
             cat /etc/os-release | grep -E '^(PRETTY_NAME|VERSION_ID)=' || true
             uname -a
             echo "=== CPU ==="
-            lscpu | grep -E '^(Architecture|CPU\\(s\\)|Model name|CPU MHz|Thread|Core|Socket|Virtualization):' || true
+            lscpu | grep -E '^(Architecture|CPU|Model name|CPU MHz|Thread|Core|Socket|Virtualization)' || true
             echo "=== RAM and swap ==="
             free -h
             swapon --show || true
