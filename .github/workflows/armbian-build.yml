@@ -332,6 +332,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
     outputs:
       release_tag: ${{ steps.release.outputs.release_tag }}
