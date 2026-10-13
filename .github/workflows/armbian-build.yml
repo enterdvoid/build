@@ -77,7 +77,7 @@ on:
         type: boolean
         default: false
       desktop:
-        description: "Desktop: semua environment yang tersedia pada OS terpilih"
+        description: "Desktop: semua DE kompatibel dan Openbox WM pada OS terpilih"
         required: true
         type: boolean
         default: true
@@ -126,6 +126,11 @@ on:
         required: true
         type: boolean
         default: false
+      desktop_openbox:
+        description: "Window Manager: Openbox standalone (otomatis disertakan jika Desktop=semua)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -164,6 +169,7 @@ jobs:
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
           DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
+          DESKTOP_OPENBOX: ${{ inputs.desktop_openbox }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
@@ -228,6 +234,10 @@ jobs:
               for variant, key, supported_releases in desktop_variants
               if truthy("DESKTOP") or truthy(key)
           ]
+          # Openbox is a standalone WM stack, not an Armbian configng DESKTOP_ENVIRONMENT.
+          # Include it with the all-desktop group, or allow it to be selected separately.
+          select_openbox = truthy("DESKTOP") or truthy("DESKTOP_OPENBOX")
+          openbox_releases = {"bullseye", "bookworm", "trixie", "forky", "jammy", "noble", "resolute"}
 
           matrix = []
           for fs in filesystems:
@@ -252,6 +262,17 @@ jobs:
                           "release": release, "image_size": 8192,
                           "build_desktop": "no", "build_minimal": "no",
                           "extension": extension, "desktop_env": ""
+                      })
+
+              if select_openbox:
+                  for release in releases:
+                      if release not in openbox_releases:
+                          continue
+                      matrix.append({
+                          "filesystem": fs, "profile": "desktop", "variant": "openbox",
+                          "release": release, "image_size": 8192,
+                          "build_desktop": "no", "build_minimal": "yes",
+                          "extension": "desktop-openbox", "desktop_env": ""
                       })
 
               for desktop, supported_releases in selected_desktops:
@@ -308,7 +329,7 @@ jobs:
               and select_all_apps
               and truthy("DESKTOP")
           ):
-              expected_default_jobs = 152
+              expected_default_jobs = 166
               if len(matrix) != expected_default_jobs:
                   raise SystemExit(
                       f"Default full matrix changed unexpectedly: expected {expected_default_jobs} jobs, got {len(matrix)}."
@@ -324,7 +345,7 @@ jobs:
                   summary.write(f"**Total jobs:** {full_matrix_count}  \n")
                   summary.write(f"**OS group:** {release_group}  \n")
                   summary.write(f"**Filesystems:** {', '.join(filesystems)}\n\n")
-                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop | Total |\n")
+                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop / WM | Total |\n")
                   summary.write("|---|---|---:|---:|---:|---:|---:|\n")
                   for release in releases:
                       for fs in filesystems:
@@ -347,6 +368,7 @@ jobs:
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop=$DESKTOP"
+          echo "Openbox WM checkbox: ${{ inputs.desktop_openbox }} (also included whenever desktop=all)"
           echo "Build matrix generated."
 
   create_release:
@@ -380,14 +402,17 @@ jobs:
               "openmediavault": "applications-omv",
               "kali": "applications-kali",
               "docker-ce": "docker-ce",
+              "openbox": "desktop-openbox",
           }
           root = pathlib.Path(".")
-          app_rows = [row for row in matrix.get("include", []) if row.get("profile") == "applications"]
-          for row in app_rows:
+          extension_rows = [row for row in matrix.get("include", []) if row.get("extension")]
+          for row in extension_rows:
               variant = row.get("variant")
               extension = extension_by_variant.get(variant)
               if not extension:
-                  raise SystemExit(f"Unknown application variant in matrix: {variant!r}")
+                  raise SystemExit(f"Unknown extension-enabled variant in matrix: {variant!r}")
+              if row.get("extension") != extension:
+                  raise SystemExit(f"Variant {variant!r} expects extension {extension!r}, got {row.get('extension')!r}.")
               candidates = (
                   root / "extensions" / f"{extension}.sh",
                   root / "extensions" / extension / f"{extension}.sh",
@@ -396,7 +421,7 @@ jobs:
               )
               if not any(path.is_file() for path in candidates):
                   raise SystemExit(f"Required Armbian extension '{extension}' not found for variant '{variant}'.")
-          print(f"Preflight passed: board exists and all {len(app_rows)} application matrix entries map to available extensions.")
+          print(f"Preflight passed: board exists and all {len(extension_rows)} extension-enabled matrix entries map to available extensions.")
           PY
       - name: Create one release with selected profile title
         id: release
@@ -512,6 +537,7 @@ jobs:
             echo '- Kali: Debian Bookworm/Trixie/Forky only.'
             echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
             echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, Budgie, and LXQt only where Armbian configng declares ARM64 availability for that release.'
+            echo '- Openbox is provided as a separate lightweight X11 window-manager session with LightDM, LXPanel, PCManFM, LXTerminal and NetworkManager tray support; it does not rely on DESKTOP_ENVIRONMENT.'
             echo '- KDE Neon, Xmonad, and Deepin are skipped because current Armbian configng marks them unsupported or disabled.'
             echo
             echo '## Common image parameters'
@@ -751,7 +777,7 @@ jobs:
           if [[ -n "$EXTENSION" ]]; then
             args+=("ENABLE_EXTENSIONS=${EXTENSION}")
           fi
-          if [[ "$PROFILE" == "desktop" ]]; then
+          if [[ "$PROFILE" == "desktop" && -z "$EXTENSION" ]]; then
             args+=("DESKTOP_ENVIRONMENT=${DESKTOP_ENV}" "DESKTOP_TIER=minimal")
           fi
           args+=("RELEASE=${RELEASE}")
