@@ -223,78 +223,26 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Create descriptive release
+      - name: Create release
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-          RUN_STARTED_AT: ${{ github.run_started_at }}
-          SOURCE_SHA: ${{ github.sha }}
-          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
-          SERVER: ${{ inputs.server }}
-          MINIMAL: ${{ inputs.minimal }}
-          HOME_ASSISTANT: ${{ inputs.home_assistant }}
-          OPENMEDIAVAULT: ${{ inputs.openmediavault }}
-          KALI: ${{ inputs.kali }}
-          DOCKER_CE: ${{ inputs.docker_ce }}
-          ALL_DESKTOPS: ${{ inputs.all_desktops }}
-          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
-          DESKTOP_MATE: ${{ inputs.desktop_mate }}
-          DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
-          DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
-          DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
-          DESKTOP_KDE_NEON: ${{ inputs.desktop_kde_neon }}
-          DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
-          DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
-          DESKTOP_XMONAD: ${{ inputs.desktop_xmonad }}
-          DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
-          DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
         run: |
-          set -euo pipefail
-          stamp="$(python3 - <<'PY'
-          import os
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
-          started = os.environ.get('RUN_STARTED_AT', '')
-          dt = datetime.fromisoformat(started.replace('Z', '+00:00')) if started else datetime.now().astimezone()
-          print(dt.astimezone(ZoneInfo('Asia/Jakarta')).strftime('%Y-%m-%d_%H-%M'))
-          PY
-          )"
           tag="dbai-armbian-build-${RUN_ID}"
-          release_title="DBAI Armbian Build ${stamp}"
-          python3 - <<'PY' > release-summary.md
-          import os
-          fs_input = os.environ.get('FILESYSTEM_INPUT', 'ext4')
-          filesystems = ['ext4', 'btrfs'] if fs_input == 'both' else [fs_input]
-          all_types = os.environ.get('ALL_BUILD_TYPES', 'false').lower() == 'true'
-          truthy = lambda key: os.environ.get(key, 'false').lower() == 'true'
-          releases = ['bookworm', 'trixie', 'forky', 'jammy', 'noble', 'resolute']
-          builds = []
-          if all_types or truthy('SERVER'): builds.append('Server — ' + ', '.join(releases))
-          if all_types or truthy('MINIMAL'): builds.append('Minimal — ' + ', '.join(releases))
-          apps = [('HOME_ASSISTANT','Home Assistant (Trixie)'),('OPENMEDIAVAULT','OpenMediaVault (Trixie)'),('KALI','Kali (Trixie)'),('DOCKER_CE','Docker CE (Trixie)')]
-          for key, label in apps:
-              if all_types or truthy(key): builds.append(label)
-          desktops = [('DESKTOP_XFCE','XFCE'),('DESKTOP_MATE','MATE'),('DESKTOP_GNOME','GNOME'),('DESKTOP_CINNAMON','Cinnamon'),('DESKTOP_KDE_PLASMA','KDE Plasma'),('DESKTOP_KDE_NEON','KDE Neon'),('DESKTOP_I3_WM','i3-wm'),('DESKTOP_ENLIGHTENMENT','Enlightenment'),('DESKTOP_XMONAD','Xmonad'),('DESKTOP_BUDGIE','Budgie'),('DESKTOP_DEEPIN','Deepin')]
-          if all_types or truthy('ALL_DESKTOPS'): builds.append('Desktop (Trixie): all 11 environments')
-          else:
-              for key, label in desktops:
-                  if truthy(key): builds.append('Desktop ' + label + ' (Trixie)')
-          if not builds: builds.append('No build type recognized; check workflow inputs')
-          lines = ['# DBAI Armbian Build', '', '## Build selection', '', '- Target filesystem: ' + ', '.join(filesystems)]
-          lines += ['- ' + item for item in builds]
-          lines += ['', '## Common parameters', '', '- Board: `aml-s9xx-box`', '- Source commit: `' + os.environ.get('SOURCE_SHA','') + '`', '- Kernel branch: `current`', '- Boot partition request: 256 MiB', '- Requested image size: Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB', '- Compression: XZ image when produced by the builder, plus SHA-256 checksum', '', '## Important notes', '', '- This release documents selected workflow inputs; only successful jobs upload firmware and checksums.', '- Actual kernel version, compressed file size, checksum, and job result are defined by each individual job log and asset.', '- Requested image size is not the compressed `.img.xz` download size.', '- Build logs and post-build resource reports are available as Actions artifacts when the relevant steps run.', '', '- Workflow run: https://github.com/' + os.environ.get('GITHUB_REPOSITORY','') + '/actions/runs/' + os.environ.get('RUN_ID',''), '- Run number: ' + os.environ.get('RUN_NUMBER',''), '- Workflow started (UTC): ' + os.environ.get('RUN_STARTED_AT','')]
-          print('\n'.join(lines))
-          PY
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$release_title" --notes-file release-summary.md --prerelease --latest=false
+            echo "Release $tag already exists; reusing it."
           else
-            gh release create "$tag" --title "$release_title" --notes-file release-summary.md --prerelease --latest=false
+            gh release create "$tag" \
+              --title "DBAI Armbian Build #${RUN_NUMBER}" \
+              --notes "Automated DBAI Armbian build batch. Assets are named by filesystem, profile, variant, and release." \
+              --prerelease \
+              --latest=false
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   build:
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
@@ -492,15 +440,13 @@ jobs:
 
           ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
 
-      - name: Prepare image, checksum, and build metadata for release
+      - name: Prepare image and checksum for release
         if: success()
         env:
           FS: ${{ matrix.filesystem }}
           PROFILE: ${{ matrix.profile }}
           VARIANT: ${{ matrix.variant }}
           RELEASE: ${{ matrix.release }}
-          IMAGE_SIZE: ${{ matrix.image_size }}
-          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -518,37 +464,10 @@ jobs:
           fi
 
           asset="aml-s9xx-box-${FS}-${RELEASE}-${PROFILE}-${VARIANT}.${suffix}"
-          log_file="build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
           cp "$image" "dist/$asset"
           sha256sum "dist/$asset" > "dist/${asset}.sha256"
-
-          # The Armbian build log records the installed target kernel package/version.
-          kernel_version="$(grep -Eo 'linux-image-current-meson64 = [0-9]+\.[0-9]+\.[0-9]+' "$log_file" 2>/dev/null | tail -n 1 | awk '{print $3}' || true)"
-          if [[ -z "$kernel_version" ]]; then
-            kernel_version="$(grep -Eo 'linux-image[^[:space:]]+_[^[:space:]]*' "$log_file" 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | tail -n 1 || true)"
-          fi
-          kernel_version="${kernel_version:-unknown; see build log}"
-          image_bytes="$(stat -c '%s' "dist/$asset")"
-          image_sha256="$(awk '{print $1}' "dist/${asset}.sha256")"
-          cat > "dist/${asset}.build-info.txt" <<EOF
-DBAI Armbian Build — per-image metadata
-Board: aml-s9xx-box
-Filesystem: ${FS}
-Profile: ${PROFILE}
-Variant: ${VARIANT}
-Distribution release: ${RELEASE}
-Kernel branch configured: current
-Kernel version detected from build log: ${kernel_version}
-Requested raw image target size: ${IMAGE_SIZE} MiB
-Image asset: ${asset}
-Compressed image size bytes: ${image_bytes}
-Compressed image size: $(du -h "dist/$asset" | awk '{print $1}')
-SHA-256: ${image_sha256}
-Source commit: ${SOURCE_SHA}
-Build log: ${log_file}
-Metadata generated (UTC): $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-EOF
           ls -lh dist/
+
       - name: Upload image and checksum to GitHub Release
         if: success()
         env:
@@ -558,68 +477,6 @@ EOF
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
 
-      - name: Post-build runner specs and remaining storage
-        if: always()
-        shell: bash
-        env:
-          FS: ${{ matrix.filesystem }}
-          PROFILE: ${{ matrix.profile }}
-          VARIANT: ${{ matrix.variant }}
-          RELEASE: ${{ matrix.release }}
-          IMAGE_SIZE: ${{ matrix.image_size }}
-        run: |
-          set +e
-          report="post-build-report.txt"
-          {
-            echo "========== DBAI ARMBIAN BUILD: POST-BUILD REPORT =========="
-            echo "LABEL: AFTER BUILD (POST-BUILD), not the PRE-BUILD snapshot"
-            echo "UTC time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo "Job status at report time: ${{ job.status }}"
-            echo "Board: aml-s9xx-box"
-            echo "Filesystem: $FS"
-            echo "Profile: $PROFILE"
-            echo "Variant: $VARIANT"
-            echo "Release: $RELEASE"
-            echo "Requested image size: ${IMAGE_SIZE} MiB"
-            echo
-            echo "=== OS/kernel AFTER BUILD ==="
-            grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release 2>/dev/null
-            uname -a
-            echo
-            echo "=== CPU AFTER BUILD ==="
-            lscpu | grep -E '^(Architecture|CPU\(s\)|Model name|Thread|Core|Socket|Virtualization):' || true
-            echo
-            echo "=== RAM and swap AFTER BUILD ==="
-            free -h
-            swapon --show || true
-            echo
-            echo "=== Filesystem capacity AFTER BUILD ==="
-            df -hT / "$GITHUB_WORKSPACE" 2>&1
-            echo
-            echo "=== Inode usage AFTER BUILD ==="
-            df -ih / "$GITHUB_WORKSPACE" 2>&1
-            echo
-            echo "=== Docker AFTER BUILD ==="
-            docker --version 2>&1
-            docker info --format 'Docker root: {{.DockerRootDir}} | Storage driver: {{.Driver}}' 2>&1
-            docker system df 2>&1 || true
-            echo
-            echo "=== Directory sizes AFTER BUILD ==="
-            du -sh "$GITHUB_WORKSPACE/.docker-data" 2>&1 || true
-            du -sh output output/images output/logs dist 2>&1 || true
-            echo
-            echo "=== Image/checksum assets in workspace ==="
-            find output/images dist -maxdepth 1 -type f \( -name '*.img' -o -name '*.img.xz' -o -name '*.sha256' \) -printf '%p | %s bytes\n' 2>/dev/null || true
-            echo "==========================================================="
-          } 2>&1 | tee "$report"
-          {
-            echo
-            echo "## DBAI Armbian Build — AFTER BUILD report"
-            echo 'Captured after the build step; these figures are not the PRE-BUILD measurements.'
-            echo '```text'
-            cat "$report"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload build log as Actions artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -630,118 +487,3 @@ EOF
             output/logs/*.log.ans
           if-no-files-found: ignore
           retention-days: 7
-  finalize_release:
-    name: Finalize release notes with actual build results
-    if: always() && needs.create_release.result == 'success'
-    needs: [prepare, create_release, build]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - name: Summarize matrix results and uploaded images
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.create_release.outputs.tag }}
-          MATRIX_RESULT: ${{ needs.build.result }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_NUMBER: ${{ github.run_number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > original-notes.md
-          gh release view "$RELEASE_TAG" --json assets --jq '.assets' > release-assets.json
-          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" > run-jobs-pages.json
-          mkdir -p checksums
-          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksums >/dev/null 2>&1 || true
-          gh release download "$RELEASE_TAG" --pattern '*.build-info.txt' --dir checksums >/dev/null 2>&1 || true
-          python3 - <<'PY' > final-notes.md
-          import json, os
-          from pathlib import Path
-          body = Path('original-notes.md').read_text(encoding='utf-8')
-          marker = '## Results after build'
-          if marker in body:
-              body = body.split(marker, 1)[0].rstrip()
-          raw_pages = json.loads(Path('run-jobs-pages.json').read_text(encoding='utf-8'))
-          pages = raw_pages if isinstance(raw_pages, list) else [raw_pages]
-          jobs = []
-          for page in pages:
-              if isinstance(page, dict): jobs.extend(page.get('jobs', []))
-          matrix_jobs = []
-          for job in jobs:
-              name = job.get('name', '')
-              if name.count(' / ') >= 3:
-                  matrix_jobs.append({'name': name, 'conclusion': job.get('conclusion') or job.get('status') or 'unknown', 'url': job.get('html_url', '')})
-          matrix_jobs.sort(key=lambda j: j['name'].lower())
-          assets = json.loads(Path('release-assets.json').read_text(encoding='utf-8'))
-          assets = assets if isinstance(assets, list) else []
-          checksum_map = {}
-          for checksum_file in Path('checksums').glob('*.sha256'):
-              try:
-                  first = checksum_file.read_text(encoding='utf-8').split()[0]
-                  checksum_map[checksum_file.name[:-7]] = first
-              except Exception:
-                  pass
-          info_map = {}
-          for info_file in Path('checksums').glob('*.build-info.txt'):
-              fields = {}
-              for line in info_file.read_text(encoding='utf-8', errors='replace').splitlines():
-                  if ':' in line:
-                      key, value = line.split(':', 1)
-                      fields[key.strip()] = value.strip()
-              image_name = info_file.name[:-len('.build-info.txt')]
-              info_map[image_name] = fields
-          images = [a for a in assets if str(a.get('name', '')).endswith('.img') or str(a.get('name', '')).endswith('.img.xz')]
-          images.sort(key=lambda a: a.get('name', '').lower())
-          def human_size(num):
-              n = float(num or 0)
-              for unit in ('B','KiB','MiB','GiB','TiB'):
-                  if n < 1024 or unit == 'TiB': return f'{n:.2f} {unit}'
-                  n /= 1024
-          out = [marker, '', f'- **Matrix aggregate status:** `{os.environ.get("MATRIX_RESULT", "unknown")}`', f'- **Matrix jobs discovered:** {len(matrix_jobs)}', '']
-          if matrix_jobs:
-              ok = sum(1 for j in matrix_jobs if j['conclusion'] == 'success')
-              bad = sum(1 for j in matrix_jobs if j['conclusion'] not in ('success', 'skipped'))
-              out += [f'- **Successful matrix jobs:** {ok}', f'- **Failed/cancelled/other non-success jobs:** {bad}', '', '### Individual build jobs', '']
-              for j in matrix_jobs:
-                  name = j['name'].replace('|', '\\|')
-                  url = f' ([job log]({j["url"]}))' if j['url'] else ''
-                  out.append(f'- `{j["conclusion"]}` — {name}{url}')
-          else:
-              out.append('- No matrix job records were returned by the GitHub Actions API.')
-          out += ['', '### Published firmware images', '']
-          if images:
-              out += ['| Firmware asset | Filesystem / profile / variant | Kernel version | Compressed size | SHA-256 |', '|---|---|---|---:|---|']
-              for asset in images:
-                  name = asset.get('name', '')
-                  size = human_size(asset.get('size', 0))
-                  url = asset.get('downloadUrl') or asset.get('url')
-                  label = f'[{name}]({url})' if url else f'`{name}`'
-                  info = info_map.get(name, {})
-                  dimensions = ' / '.join(x for x in [info.get('Filesystem'), info.get('Profile'), info.get('Variant'), info.get('Distribution release')] if x) or 'encoded in asset name'
-                  kernel = info.get('Kernel version detected from build log', 'see build log')
-                  checksum = checksum_map.get(name, 'see matching `.sha256` asset')
-                  out.append(f'| {label} | {dimensions} | `{kernel}` | {size} | `{checksum}` |')
-          else:
-              out.append('No firmware image assets were uploaded to this Release. Check the job status and Actions logs.')
-          out += ['', '### Other Release assets', '']
-          other_assets = [a for a in assets if a not in images]
-          if other_assets:
-              for asset in sorted(other_assets, key=lambda a: a.get('name', '').lower()):
-                  name = asset.get('name', '')
-                  url = asset.get('downloadUrl') or asset.get('url')
-                  label = f'[{name}]({url})' if url else f'`{name}`'
-                  out.append(f'- {label} — {human_size(asset.get("size", 0))}')
-          else:
-              out.append('- No additional Release assets.')
-          out += ['', '### Build notes', '', '- File sizes in the table are the actual compressed Release asset sizes; they are not the requested raw image size.', '- Checksums are read from the uploaded `.sha256` files. If a checksum value is not shown, download the matching `.sha256` asset.', '- Logs, runner specifications, and the **AFTER BUILD (POST-BUILD)** storage report are available from the Actions run when those steps completed.', '', f'- **Actions run:** https://github.com/{os.environ.get("GITHUB_REPOSITORY", "")}/actions/runs/{os.environ.get("RUN_ID", "")}', '']
-          print(body + '\n\n' + '\n'.join(out))
-          PY
-          gh release edit "$RELEASE_TAG" --notes-file final-notes.md
-          {
-            echo '## Release updated with final build results'
-            echo "- Release tag: `$RELEASE_TAG`"
-            echo "- Matrix result: `${MATRIX_RESULT}`"
-            echo "- Firmware image assets found: $(python3 -c 'import json; print(sum(1 for a in json.load(open("release-assets.json")) if a.get("name", "").endswith((".img", ".img.xz"))))')"
-          } >> "$GITHUB_STEP_SUMMARY"
