@@ -319,7 +319,7 @@ jobs:
               if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali on Debian releases'; fi
               if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE on supported Debian/Ubuntu releases'; fi
               if [[ "$ALL_DESKTOPS" == "true" ]]; then
-                echo '- **Profile:** '
+                echo '- **Desktop:** all buildable environments on compatible selected OS releases'
               else
                 if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on compatible selected OS releases'; fi
                 if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on compatible selected OS releases'; fi
