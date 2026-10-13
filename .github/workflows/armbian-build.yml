@@ -1,6 +1,10 @@
 name: DBAI Armbian Build
 
 on:
+  # TEMPORARY: matrix-only validation; remove after test.
+  push:
+    paths:
+      - '.github/run-dabai-matrix-validation'
   workflow_dispatch:
     inputs:
       filesystem:
@@ -92,6 +96,11 @@ on:
         required: true
         type: boolean
         default: false
+      desktop_lxqt:
+        description: "Desktop: LXQt pada release OS yang kompatibel"
+        required: true
+        type: boolean
+        default: false
       desktop_i3_wm:
         description: "Desktop: i3-wm pada release OS yang kompatibel"
         required: true
@@ -124,11 +133,11 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
-          OS_GROUP_INPUT: ${{ inputs.os_group }}
-          SERVER: ${{ inputs.server }}
-          MINIMAL: ${{ inputs.minimal }}
-          APPLICATIONS: ${{ inputs.applications }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem || 'both' }}
+          OS_GROUP_INPUT: ${{ inputs.os_group || 'all' }}
+          SERVER: ${{ inputs.server || github.event_name == 'push' }}
+          MINIMAL: ${{ inputs.minimal || github.event_name == 'push' }}
+          APPLICATIONS: ${{ inputs.applications || github.event_name == 'push' }}
           HOME_ASSISTANT: ${{ inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
@@ -142,6 +151,7 @@ jobs:
           DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
@@ -187,6 +197,8 @@ jobs:
               if select_all_apps or truthy(key)
           ]
 
+          # Audited against armbian/configng desktop YAML: releases with ARM64 availability.
+          # Supported and community variants are included; disabled/unsupported variants are excluded.
           desktop_variants = [
               ("xfce", "DESKTOP_XFCE", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("mate", "DESKTOP_MATE", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
@@ -196,6 +208,7 @@ jobs:
               ("i3-wm", "DESKTOP_I3_WM", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("enlightenment", "DESKTOP_ENLIGHTENMENT", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("budgie", "DESKTOP_BUDGIE", {"bookworm", "trixie", "noble"}),
+              ("lxqt", "DESKTOP_LXQT", {"bookworm", "trixie", "forky", "jammy", "noble"}),
           ]
           selected_desktops = [
               (variant, supported_releases)
@@ -253,22 +266,36 @@ jobs:
           if len(set(matrix_keys)) != len(matrix_keys):
               raise SystemExit("Matriks mengandung kombinasi build duplikat.")
 
+          if (
+              release_group == "all"
+              and filesystem_input == "both"
+              and selected["server"]
+              and selected["minimal"]
+              and select_all_apps
+              and truthy("DESKTOP")
+          ):
+              expected_default_jobs = 148
+              if len(matrix) != expected_default_jobs:
+                  raise SystemExit(
+                      f"Default full matrix changed unexpectedly: expected {expected_default_jobs} jobs, got {len(matrix)}."
+                  )
+
           # Put a compact, OS-by-OS inventory in the Actions run summary.
           from collections import Counter
           counts = Counter((item["release"], item["filesystem"], item["profile"]) for item in matrix)
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
               with open(summary_path, "a", encoding="utf-8") as summary:
-                  summary.write("# DBAI Armbian build matrix\\n\\n")
-                  summary.write(f"**Total jobs:** {full_matrix_count}  \\n")
-                  summary.write(f"**OS group:** {release_group}  \\n")
-                  summary.write(f"**Filesystems:** {', '.join(filesystems)}\\n\\n")
-                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop | Total |\\n")
-                  summary.write("|---|---|---:|---:|---:|---:|---:|\\n")
+                  summary.write("# DBAI Armbian build matrix\n\n")
+                  summary.write(f"**Total jobs:** {full_matrix_count}  \n")
+                  summary.write(f"**OS group:** {release_group}  \n")
+                  summary.write(f"**Filesystems:** {', '.join(filesystems)}\n\n")
+                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop | Total |\n")
+                  summary.write("|---|---|---:|---:|---:|---:|---:|\n")
                   for release in releases:
                       for fs in filesystems:
                           row = [counts.get((release, fs, profile), 0) for profile in ("server", "minimal", "applications", "desktop")]
-                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {sum(row)} |\\n")
+                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {sum(row)} |\n")
 
           print(f"Jobs submitted to GitHub Actions: {len(matrix)}", file=sys.stderr)
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
@@ -281,7 +308,7 @@ jobs:
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
-          DESKTOP: ${{ inputs.desktop }}
+          DESKTOP: ${{ inputs.desktop || github.event_name == 'push' }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
@@ -289,6 +316,7 @@ jobs:
           echo "Build matrix generated."
 
   create_release:
+    if: github.event_name != 'push'
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
@@ -322,6 +350,7 @@ jobs:
           DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
         shell: bash
         run: |
           set -euo pipefail
@@ -359,6 +388,7 @@ jobs:
               if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on compatible selected OS releases'; fi
               if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on compatible selected OS releases'; fi
               if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_LXQT" == "true" ]]; then echo '- **Desktop:** LXQt on compatible selected OS releases'; fi
             fi
             echo
             echo '## Application compatibility'
@@ -366,7 +396,7 @@ jobs:
             echo '- Home Assistant and OpenMediaVault: Debian Bookworm/Trixie.'
             echo '- Kali: Debian Bookworm/Trixie/Forky only.'
             echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
-            echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, and Budgie only where the current Armbian desktop definitions declare them available.'
+            echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, Budgie, and LXQt only where Armbian configng declares ARM64 availability for that release.'
             echo '- KDE Neon, Xmonad, and Deepin are skipped because current Armbian configng marks them unsupported or disabled.'
             echo
             echo '## Common image parameters'
@@ -392,6 +422,7 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
   build:
+    if: github.event_name != 'push'
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
