@@ -323,6 +323,7 @@ jobs:
           DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
         shell: bash
         run: |
           set -euo pipefail
@@ -342,7 +343,7 @@ jobs:
               echo "# ${title}"
               echo
               echo "**Category:** ${display}"
-              echo "**Workflow started (Asia/Jakarta): ${stamp}**"
+              echo "**Release generated (Asia/Jakarta): ${stamp}**"
               echo
               echo "## Build selection"
               echo
@@ -383,6 +384,7 @@ jobs:
                     [[ "$DESKTOP_I3_WM" == "true" ]] && echo "- i3-wm"
                     [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]] && echo "- Enlightenment"
                     [[ "$DESKTOP_BUDGIE" == "true" ]] && echo "- Budgie"
+                    [[ "$DESKTOP_LXQT" == "true" ]] && echo "- LXQt"
                   fi
                   ;;
               esac
@@ -419,7 +421,7 @@ jobs:
           if [[ "$APPLICATIONS" == "true" || "$HOME_ASSISTANT" == "true" || "$OPENMEDIAVAULT" == "true" || "$KALI" == "true" || "$DOCKER_CE" == "true" ]]; then
             create_category_release applications Applications
           fi
-          if [[ "$DESKTOP" == "true" || "$DESKTOP_XFCE" == "true" || "$DESKTOP_MATE" == "true" || "$DESKTOP_GNOME" == "true" || "$DESKTOP_CINNAMON" == "true" || "$DESKTOP_KDE_PLASMA" == "true" || "$DESKTOP_I3_WM" == "true" || "$DESKTOP_ENLIGHTENMENT" == "true" || "$DESKTOP_BUDGIE" == "true" ]]; then
+          if [[ "$DESKTOP" == "true" || "$DESKTOP_XFCE" == "true" || "$DESKTOP_MATE" == "true" || "$DESKTOP_GNOME" == "true" || "$DESKTOP_CINNAMON" == "true" || "$DESKTOP_KDE_PLASMA" == "true" || "$DESKTOP_I3_WM" == "true" || "$DESKTOP_ENLIGHTENMENT" == "true" || "$DESKTOP_BUDGIE" == "true" || "$DESKTOP_LXQT" == "true" ]]; then
             create_category_release desktop Desktop
           fi
 
@@ -656,7 +658,7 @@ jobs:
             suffix="img"
           fi
 
-          asset="aml-s9xx-box-${FS}-${RELEASE}-${PROFILE}-${VARIANT}.${suffix}"
+          asset="aml-s9xx-box-${FS}-${RELEASE}-${VARIANT}.${suffix}"
           cp "$image" "dist/$asset"
           # Keep the checksum portable: it must verify after downloading the release assets.
           (cd dist && sha256sum "$asset" > "${asset}.sha256")
