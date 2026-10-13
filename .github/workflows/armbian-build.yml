@@ -600,3 +600,105 @@ jobs:
             output/logs/*.log.ans
           if-no-files-found: ignore
           retention-days: 7
+  finalize_release:
+    name: Finalize release notes with actual build results
+    if: always() && needs.create_release.result == 'success'
+    needs: [prepare, create_release, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Summarize matrix results and uploaded images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.create_release.outputs.tag }}
+          MATRIX_RESULT: ${{ needs.build.result }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > original-notes.md
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets' > release-assets.json
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" > run-jobs-pages.json
+          mkdir -p checksums
+          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksums >/dev/null 2>&1 || true
+          python3 - <<'PY' > final-notes.md
+          import json, os
+          from pathlib import Path
+          body = Path('original-notes.md').read_text(encoding='utf-8')
+          marker = '## Results after build'
+          if marker in body:
+              body = body.split(marker, 1)[0].rstrip()
+          raw_pages = json.loads(Path('run-jobs-pages.json').read_text(encoding='utf-8'))
+          pages = raw_pages if isinstance(raw_pages, list) else [raw_pages]
+          jobs = []
+          for page in pages:
+              if isinstance(page, dict): jobs.extend(page.get('jobs', []))
+          matrix_jobs = []
+          for job in jobs:
+              name = job.get('name', '')
+              if name.count(' / ') >= 3:
+                  matrix_jobs.append({'name': name, 'conclusion': job.get('conclusion') or job.get('status') or 'unknown', 'url': job.get('html_url', '')})
+          matrix_jobs.sort(key=lambda j: j['name'].lower())
+          assets = json.loads(Path('release-assets.json').read_text(encoding='utf-8'))
+          assets = assets if isinstance(assets, list) else []
+          checksum_map = {}
+          for checksum_file in Path('checksums').glob('*.sha256'):
+              try:
+                  first = checksum_file.read_text(encoding='utf-8').split()[0]
+                  checksum_map[checksum_file.name[:-7]] = first
+              except Exception:
+                  pass
+          images = [a for a in assets if str(a.get('name', '')).endswith('.img') or str(a.get('name', '')).endswith('.img.xz')]
+          images.sort(key=lambda a: a.get('name', '').lower())
+          def human_size(num):
+              n = float(num or 0)
+              for unit in ('B','KiB','MiB','GiB','TiB'):
+                  if n < 1024 or unit == 'TiB': return f'{n:.2f} {unit}'
+                  n /= 1024
+          out = [marker, '', f'- **Matrix aggregate status:** `{os.environ.get("MATRIX_RESULT", "unknown")}`', f'- **Matrix jobs discovered:** {len(matrix_jobs)}', '']
+          if matrix_jobs:
+              ok = sum(1 for j in matrix_jobs if j['conclusion'] == 'success')
+              bad = sum(1 for j in matrix_jobs if j['conclusion'] not in ('success', 'skipped'))
+              out += [f'- **Successful matrix jobs:** {ok}', f'- **Failed/cancelled/other non-success jobs:** {bad}', '', '### Individual build jobs', '']
+              for j in matrix_jobs:
+                  name = j['name'].replace('|', '\\|')
+                  url = f' ([job log]({j["url"]}))' if j['url'] else ''
+                  out.append(f'- `{j["conclusion"]}` — {name}{url}')
+          else:
+              out.append('- No matrix job records were returned by the GitHub Actions API.')
+          out += ['', '### Published firmware images', '']
+          if images:
+              out += ['| Firmware asset | Compressed size | SHA-256 |', '|---|---:|---|']
+              for asset in images:
+                  name = asset.get('name', '')
+                  size = human_size(asset.get('size', 0))
+                  url = asset.get('downloadUrl') or asset.get('url')
+                  label = f'[{name}]({url})' if url else f'`{name}`'
+                  checksum = checksum_map.get(name, 'see matching `.sha256` asset')
+                  out.append(f'| {label} | {size} | `{checksum}` |')
+          else:
+              out.append('No firmware image assets were uploaded to this Release. Check the job status and Actions logs.')
+          out += ['', '### Other Release assets', '']
+          other_assets = [a for a in assets if a not in images]
+          if other_assets:
+              for asset in sorted(other_assets, key=lambda a: a.get('name', '').lower()):
+                  name = asset.get('name', '')
+                  url = asset.get('downloadUrl') or asset.get('url')
+                  label = f'[{name}]({url})' if url else f'`{name}`'
+                  out.append(f'- {label} — {human_size(asset.get("size", 0))}')
+          else:
+              out.append('- No additional Release assets.')
+          out += ['', '### Build notes', '', '- File sizes in the table are the actual compressed Release asset sizes; they are not the requested raw image size.', '- Checksums are read from the uploaded `.sha256` files. If a checksum value is not shown, download the matching `.sha256` asset.', '- Logs, runner specifications, and the **AFTER BUILD (POST-BUILD)** storage report are available from the Actions run when those steps completed.', '', f'- **Actions run:** https://github.com/{os.environ.get("GITHUB_REPOSITORY", "")}/actions/runs/{os.environ.get("RUN_ID", "")}', '']
+          print(body + '\\n\\n' + '\\n'.join(out))
+          PY
+          gh release edit "$RELEASE_TAG" --notes-file final-notes.md
+          {
+            echo '## Release updated with final build results'
+            echo "- Release tag: `$RELEASE_TAG`"
+            echo "- Matrix result: `${MATRIX_RESULT}`"
+            echo "- Firmware image assets found: $(python3 -c 'import json; print(sum(1 for a in json.load(open("release-assets.json")) if a.get("name", "").endswith((".img", ".img.xz"))))')"
+          } >> "$GITHUB_STEP_SUMMARY"
