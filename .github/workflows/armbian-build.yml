@@ -440,9 +440,9 @@ jobs:
           release_title="DBAI Armbian ${category_title} Build ${stamp}"
           notes_file="release-summary.md"
           {
-            echo "# ${release_title}"
+            echo "# DBAI Armbian Build"
             echo
-            echo "**Workflow started (Asia/Jakarta): ${stamp}**"
+            echo "**Build started (Asia/Jakarta): ${stamp}**"
             echo
             echo '## Build selection'
             echo
@@ -713,7 +713,7 @@ jobs:
 
           ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
 
-      - name: Prepare image, checksum, and metadata for release
+      - name: Prepare image and checksum for release
         if: success()
         env:
           FS: ${{ matrix.filesystem }}
@@ -743,24 +743,9 @@ jobs:
           cp "$image" "dist/$asset"
           # The checksum must contain only the asset basename for portable verification.
           (cd dist && sha256sum "$asset" > "${asset}.sha256")
-          bytes="$(stat -c '%s' "dist/$asset")"
-          size_human="$(du -h "dist/$asset" | cut -f1)"
-          digest="$(awk '{print $1}' "dist/${asset}.sha256")"
-          {
-            echo "asset=${asset}"
-            echo "source_image=${image}"
-            echo "board=aml-s9xx-box"
-            echo "filesystem=${FS}"
-            echo "release=${RELEASE}"
-            echo "profile=${PROFILE}"
-            echo "variant=${VARIANT}"
-            echo "size_bytes=${bytes}"
-            echo "size_human=${size_human}"
-            echo "sha256=${digest}"
-          } > "dist/${asset}.manifest.txt"
           ls -lh dist/
 
-      - name: Upload image, checksum, and metadata to GitHub Release
+      - name: Upload image and checksum to GitHub Release
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
