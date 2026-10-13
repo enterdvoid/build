@@ -294,15 +294,17 @@ jobs:
     permissions:
       contents: write
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
+      server: ${{ steps.release.outputs.server }}
+      minimal: ${{ steps.release.outputs.minimal }}
+      applications: ${{ steps.release.outputs.applications }}
+      desktop: ${{ steps.release.outputs.desktop }}
     steps:
-      - name: Create descriptive release
+      - name: Create category-specific releases
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          RUN_NUMBER: ${{ github.run_number }}
           RUN_STARTED_AT: ${{ github.run_started_at }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
@@ -326,71 +328,106 @@ jobs:
         run: |
           set -euo pipefail
           stamp="$(TZ=Asia/Jakarta date -d "$RUN_STARTED_AT" +'%Y-%m-%d_%H-%M')"
-          tag="dbai-armbian-build-${RUN_ID}"
-          release_title="DBAI Armbian Build ${stamp}"
-          notes_file="release-summary.md"
-          {
-            echo '# DBAI Armbian Build'
-            echo
-            echo "**Workflow started (Asia/Jakarta): ${stamp}**"
-            echo
-            echo '## Build selection'
-            echo
-            echo "- **OS release group:** ${OS_GROUP_INPUT}"
-            echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
-            if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
-            if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
-            if [[ "$APPLICATIONS" == "true" ]]; then
-              echo '- **Profile:** all compatible Applications variants'
+          server=""
+          minimal=""
+          applications=""
+          desktop=""
+
+          create_category_release() {
+            local category="$1"
+            local display="$2"
+            local tag="dbai-armbian-${category}-${RUN_ID}"
+            local title="DBAI Armbian ${display} Build ${stamp}"
+            local notes_file="release-${category}.md"
+            {
+              echo "# ${title}"
+              echo
+              echo "**Category:** ${display}"
+              echo "**Workflow started (Asia/Jakarta): ${stamp}**"
+              echo
+              echo "## Build selection"
+              echo
+              echo "- **OS release group:** ${OS_GROUP_INPUT}"
+              echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
+              case "$category" in
+                server)
+                  echo "- **Image type:** Server"
+                  echo "- **Requested raw image size:** 4096 MiB"
+                  ;;
+                minimal)
+                  echo "- **Image type:** Minimal"
+                  echo "- **Requested raw image size:** 4096 MiB"
+                  ;;
+                applications)
+                  echo "- **Image type:** Applications"
+                  echo "- **Requested raw image size:** 8192 MiB"
+                  if [[ "$APPLICATIONS" == "true" ]]; then
+                    echo "- **Selected variants:** all compatible applications"
+                  else
+                    [[ "$HOME_ASSISTANT" == "true" ]] && echo "- Home Assistant"
+                    [[ "$OPENMEDIAVAULT" == "true" ]] && echo "- OpenMediaVault"
+                    [[ "$KALI" == "true" ]] && echo "- Kali"
+                    [[ "$DOCKER_CE" == "true" ]] && echo "- Docker CE"
+                  fi
+                  ;;
+                desktop)
+                  echo "- **Image type:** Desktop"
+                  echo "- **Requested raw image size:** 8192 MiB"
+                  if [[ "$DESKTOP" == "true" ]]; then
+                    echo "- **Selected variants:** all compatible desktop environments"
+                  else
+                    [[ "$DESKTOP_XFCE" == "true" ]] && echo "- XFCE"
+                    [[ "$DESKTOP_MATE" == "true" ]] && echo "- MATE"
+                    [[ "$DESKTOP_GNOME" == "true" ]] && echo "- GNOME"
+                    [[ "$DESKTOP_CINNAMON" == "true" ]] && echo "- Cinnamon"
+                    [[ "$DESKTOP_KDE_PLASMA" == "true" ]] && echo "- KDE Plasma"
+                    [[ "$DESKTOP_I3_WM" == "true" ]] && echo "- i3-wm"
+                    [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]] && echo "- Enlightenment"
+                    [[ "$DESKTOP_BUDGIE" == "true" ]] && echo "- Budgie"
+                  fi
+                  ;;
+              esac
+              echo
+              echo "## Common image parameters"
+              echo
+              echo "- **Board:** aml-s9xx-box"
+              echo "- **Kernel branch:** current"
+              echo "- **Boot partition request:** 256 MiB"
+              echo "- **Image compression:** XZ when produced by Armbian Builder"
+              echo
+              echo "## Integrity and availability"
+              echo
+              echo "- Images are uploaded as each successful build completes; this release can grow while the workflow is running."
+              echo "- SHA256SUMS.txt contains the combined SHA-256 checksums for successful images in this category and is finalized after all matrix jobs finish."
+              echo "- Per-image .manifest.txt files describe each asset and include its SHA-256 digest."
+              echo "- Failed or invalid build jobs are not listed in the checksum file."
+              echo "- The requested raw image size is not the compressed download size."
+              echo
+              echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
+            } > "$notes_file"
+
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release edit "$tag" --title "$title" --notes-file "$notes_file" --prerelease --latest=false
             else
-              if [[ "$HOME_ASSISTANT" == "true" ]]; then echo '- **Application:** Home Assistant on supported releases'; fi
-              if [[ "$OPENMEDIAVAULT" == "true" ]]; then echo '- **Application:** OpenMediaVault on supported releases'; fi
-              if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali on Debian releases'; fi
-              if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE on supported Debian/Ubuntu releases'; fi
+              gh release create "$tag" --title "$title" --notes-file "$notes_file" --prerelease --latest=false
             fi
-            if [[ "$DESKTOP" == "true" ]]; then
-              echo '- **Profile:** all buildable Desktop environments on compatible selected OS releases'
-            else
-              if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on compatible selected OS releases'; fi
-              if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on compatible selected OS releases'; fi
-            fi
-            echo
-            echo '## Application compatibility'
-            echo
-            echo '- Home Assistant and OpenMediaVault: Debian Bookworm/Trixie.'
-            echo '- Kali: Debian Bookworm/Trixie/Forky only.'
-            echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
-            echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, and Budgie only where the current Armbian desktop definitions declare them available.'
-            echo '- KDE Neon, Xmonad, and Deepin are skipped because current Armbian configng marks them unsupported or disabled.'
-            echo
-            echo '## Common image parameters'
-            echo
-            echo '- **Board:** `aml-s9xx-box`'
-            echo '- **Kernel branch:** `current`'
-            echo '- **Boot partition request:** 256 MiB'
-            echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB'
-            echo '- **Image output:** compressed XZ when produced by Armbian Builder, with a portable SHA-256 checksum and per-image metadata manifest'
-            echo
-            echo '## Notes'
-            echo
-            echo '- This section documents the selected build matrix. Only successful jobs upload image and checksum assets.'
-            echo '- Requested raw image size is not the compressed download file size.'
-            echo '- Actual image filenames and compressed sizes are shown in the Release assets list. Each image also has a `.sha256` checksum and `.manifest.txt` metadata file.'
-            echo
-            echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
-          } > "$notes_file"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$release_title" --notes-file "$notes_file" --prerelease --latest=false
-          else
-            gh release create "$tag" --title "$release_title" --notes-file "$notes_file" --prerelease --latest=false
+            printf -v "${category}" '%s' "$tag"
+            echo "Prepared release: $title ($tag)"
+          }
+
+          if [[ "$SERVER" == "true" ]]; then create_category_release server Server; fi
+          if [[ "$MINIMAL" == "true" ]]; then create_category_release minimal Minimal; fi
+          if [[ "$APPLICATIONS" == "true" || "$HOME_ASSISTANT" == "true" || "$OPENMEDIAVAULT" == "true" || "$KALI" == "true" || "$DOCKER_CE" == "true" ]]; then
+            create_category_release applications Applications
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$DESKTOP" == "true" || "$DESKTOP_XFCE" == "true" || "$DESKTOP_MATE" == "true" || "$DESKTOP_GNOME" == "true" || "$DESKTOP_CINNAMON" == "true" || "$DESKTOP_KDE_PLASMA" == "true" || "$DESKTOP_I3_WM" == "true" || "$DESKTOP_ENLIGHTENMENT" == "true" || "$DESKTOP_BUDGIE" == "true" ]]; then
+            create_category_release desktop Desktop
+          fi
+
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+          echo "minimal=$minimal" >> "$GITHUB_OUTPUT"
+          echo "applications=$applications" >> "$GITHUB_OUTPUT"
+          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
   build:
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
@@ -646,7 +683,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.create_release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.create_release.outputs[matrix.profile] }}
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
 
@@ -687,3 +724,60 @@ jobs:
             ${{ runner.temp }}/dbai-after-build-report.txt
           if-no-files-found: ignore
           retention-days: 7
+
+  finalize_releases:
+    needs: [create_release, build]
+    if: always() && needs.create_release.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        category: [server, minimal, applications, desktop]
+    name: Finalize ${{ matrix.category }} SHA256SUMS
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.create_release.outputs[matrix.category] }}
+      CATEGORY: ${{ matrix.category }}
+    steps:
+      - name: Consolidate per-image checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo "No release was created for category '$CATEGORY'; nothing to finalize."
+            exit 0
+          fi
+
+          asset_names="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          mapfile -t checksum_assets < <(printf '%s\n' "$asset_names" | grep -E '\.img(\.xz)?\.sha256$' || true)
+          if [[ "${#checksum_assets[@]}" -eq 0 ]]; then
+            echo "No successful images/checksums were uploaded for $CATEGORY; no SHA256SUMS file will be published."
+            exit 0
+          fi
+
+          mkdir -p checksum-input
+          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input
+          {
+            for checksum in checksum-input/*.sha256; do
+              [[ -f "$checksum" ]] || continue
+              cat "$checksum"
+            done
+          } | sort -k2,2 > SHA256SUMS.txt
+
+          if [[ ! -s SHA256SUMS.txt ]]; then
+            echo "::error::Checksum assets were found, but the combined checksum file is empty."
+            exit 1
+          fi
+
+          echo "Combined checksums:"
+          cat SHA256SUMS.txt
+          gh release upload "$RELEASE_TAG" SHA256SUMS.txt --clobber
+
+          # Delete per-image checksum sidecars only after the consolidated file is uploaded.
+          for asset in "${checksum_assets[@]}"; do
+            gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+          done
+          echo "Published SHA256SUMS.txt and removed ${#checksum_assets[@]} individual checksum assets."
