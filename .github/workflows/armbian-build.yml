@@ -136,6 +136,7 @@ concurrency:
 
 jobs:
   prepare:
+    name: Generate build matrix
     if: inputs.cleanup_run_history != true
     runs-on: ubuntu-24.04
     outputs:
@@ -530,8 +531,25 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     name: ${{ matrix.filesystem }} / ${{ matrix.profile }} / ${{ matrix.variant }} / ${{ matrix.release }}
     steps:
-      - name: Maximize available build disk
+      - name: Diagnose runner before disk setup
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          echo "Runner reached the build job at $(date -Is)"
+          echo "Runner: $(uname -a)"
+          echo "Workspace: $GITHUB_WORKSPACE"
+          echo "=== Filesystems before disk setup ==="
+          df -hT / /mnt "$GITHUB_WORKSPACE" || true
+          echo "=== Block devices ==="
+          lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS || true
+          echo "=== Memory and swap ==="
+          free -h
+          swapon --show || true
+
+      - name: Maximize available build disk (10-minute timeout)
         uses: easimon/maximize-build-space@v10
+        timeout-minutes: 10
         with:
           root-reserve-mb: 512
           swap-size-mb: 1024
@@ -551,6 +569,7 @@ jobs:
       # Move Docker's fresh data root onto the workspace volume before pulling/building.
       - name: Move Docker storage to large build volume
         shell: bash
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           docker_root="$GITHUB_WORKSPACE/.docker-data"
