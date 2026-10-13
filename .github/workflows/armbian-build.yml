@@ -605,10 +605,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          mapfile -t images < <(find output/images -maxdepth 1 -type f \\( -name '*.img.xz' -o -name '*.img' \\) -print | sort)
+          mapfile -t images < <(find output/images -maxdepth 1 -type f \( -name '*.img.xz' -o -name '*.img' \) -print | sort)
           if [[ "${#images[@]}" -ne 1 ]]; then
             echo "::error::Expected exactly one image in output/images, found ${#images[@]}."
-            printf '%s\\n' "${images[@]}"
+            printf '%s\n' "${images[@]}"
             find output/images -maxdepth 1 -type f -print || true
             exit 1
           fi
