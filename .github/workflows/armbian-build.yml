@@ -801,18 +801,29 @@ jobs:
           echo "Found ${#run_ids[@]} workflow runs. Deleting all runs, with the cleanup run last."
 
           deleted=0
+          failed=0
           for run_id in "${run_ids[@]}"; do
             [[ -n "$run_id" ]] || continue
             [[ "$run_id" == "$current" ]] && continue
-            gh api --silent --method DELETE "repos/$repo/actions/runs/$run_id"
-            deleted=$((deleted + 1))
-            echo "Deleted workflow run $run_id"
+            if gh api --silent --method DELETE "repos/$repo/actions/runs/$run_id"; then
+              deleted=$((deleted + 1))
+              echo "Deleted workflow run $run_id"
+            else
+              failed=$((failed + 1))
+              echo "::warning::Could not delete workflow run $run_id"
+            fi
+            sleep 0.2
           done
 
           # Delete this cleanup run last so the repository can end with an empty run history.
           if gh api --silent --method DELETE "repos/$repo/actions/runs/$current"; then
             echo "Cleanup run deleted as the final action."
           else
-            echo "::warning::Old runs were deleted, but GitHub did not allow deleting the current cleanup run."
+            failed=$((failed + 1))
+            echo "::warning::GitHub did not allow deleting the current cleanup run."
           fi
-          echo "Completed deletion attempts for $deleted prior workflow runs."
+          echo "Deleted $deleted prior workflow runs; failures: $failed."
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::Some workflow runs may remain. Review this job's log if the cleanup run itself still exists."
+            exit 1
+          fi
