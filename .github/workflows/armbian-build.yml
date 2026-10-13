@@ -67,62 +67,47 @@ on:
         type: boolean
         default: false
       all_desktops:
-        description: "Desktop: semua 11 environment pada setiap OS terpilih"
+        description: "Desktop: semua environment aktif pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_xfce:
-        description: "Desktop: XFCE pada setiap OS terpilih"
+        description: "Desktop: XFCE pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_mate:
-        description: "Desktop: MATE pada setiap OS terpilih"
+        description: "Desktop: MATE pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_gnome:
-        description: "Desktop: GNOME pada setiap OS terpilih"
+        description: "Desktop: GNOME pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_cinnamon:
-        description: "Desktop: Cinnamon pada setiap OS terpilih"
+        description: "Desktop: Cinnamon pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_kde_plasma:
-        description: "Desktop: KDE Plasma pada setiap OS terpilih"
-        required: true
-        type: boolean
-        default: false
-      desktop_kde_neon:
-        description: "Desktop: KDE Neon pada setiap OS terpilih"
+        description: "Desktop: KDE Plasma pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_i3_wm:
-        description: "Desktop: i3-wm pada setiap OS terpilih"
+        description: "Desktop: i3-wm pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_enlightenment:
-        description: "Desktop: Enlightenment pada setiap OS terpilih"
-        required: true
-        type: boolean
-        default: false
-      desktop_xmonad:
-        description: "Desktop: Xmonad pada setiap OS terpilih"
+        description: "Desktop: Enlightenment pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
       desktop_budgie:
-        description: "Desktop: Budgie pada setiap OS terpilih"
-        required: true
-        type: boolean
-        default: false
-      desktop_deepin:
-        description: "Desktop: Deepin pada setiap OS terpilih"
+        description: "Desktop: Budgie pada release OS yang kompatibel"
         required: true
         type: boolean
         default: false
@@ -160,12 +145,9 @@ jobs:
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
           DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
           DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
-          DESKTOP_KDE_NEON: ${{ inputs.desktop_kde_neon }}
           DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
-          DESKTOP_XMONAD: ${{ inputs.desktop_xmonad }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
-          DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
@@ -208,15 +190,18 @@ jobs:
           ]
 
           desktop_variants = [
-              ("xfce", "DESKTOP_XFCE"), ("mate", "DESKTOP_MATE"),
-              ("gnome", "DESKTOP_GNOME"), ("cinnamon", "DESKTOP_CINNAMON"),
-              ("kde-plasma", "DESKTOP_KDE_PLASMA"), ("kde-neon", "DESKTOP_KDE_NEON"),
-              ("i3-wm", "DESKTOP_I3_WM"), ("enlightenment", "DESKTOP_ENLIGHTENMENT"),
-              ("xmonad", "DESKTOP_XMONAD"), ("budgie", "DESKTOP_BUDGIE"),
-              ("deepin", "DESKTOP_DEEPIN"),
+              ("xfce", "DESKTOP_XFCE", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("mate", "DESKTOP_MATE", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("gnome", "DESKTOP_GNOME", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("cinnamon", "DESKTOP_CINNAMON", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("kde-plasma", "DESKTOP_KDE_PLASMA", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("i3-wm", "DESKTOP_I3_WM", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("enlightenment", "DESKTOP_ENLIGHTENMENT", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("budgie", "DESKTOP_BUDGIE", {"bookworm", "trixie", "noble"}),
           ]
           selected_desktops = [
-              variant for variant, key in desktop_variants
+              (variant, supported_releases)
+              for variant, key, supported_releases in desktop_variants
               if all_types or truthy("ALL_DESKTOPS") or truthy(key)
           ]
 
@@ -245,8 +230,10 @@ jobs:
                           "extension": extension, "desktop_env": ""
                       })
 
-              for desktop in selected_desktops:
+              for desktop, supported_releases in selected_desktops:
                   for release in releases:
+                      if release not in supported_releases:
+                          continue
                       matrix.append({
                           "filesystem": fs, "profile": "desktop", "variant": desktop,
                           "release": release, "image_size": 8192,
@@ -319,12 +306,9 @@ jobs:
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
           DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
           DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
-          DESKTOP_KDE_NEON: ${{ inputs.desktop_kde_neon }}
           DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
-          DESKTOP_XMONAD: ${{ inputs.desktop_xmonad }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
-          DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
         shell: bash
         run: |
           set -euo pipefail
@@ -344,7 +328,7 @@ jobs:
             if [[ "$TEST_ONLY" == "true" ]]; then
               echo '- **Temporary regression test:** full matrix expansion validated; only ext4 / desktop / xfce / trixie was actually built and uploaded.'
             elif [[ "$ALL_BUILD_TYPES" == "true" ]]; then
-              echo '- **Profiles:** Server and Minimal on every selected OS release; all compatible application variants; all 11 desktop environments on every selected OS release.'
+              echo '- **Profiles:** Server and Minimal on every selected OS release; all compatible application variants; all buildable desktop environments on compatible releases; .'
             else
               if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
               if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
@@ -354,19 +338,16 @@ jobs:
               if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali on Debian releases'; fi
               if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE on supported Debian/Ubuntu releases'; fi
               if [[ "$ALL_DESKTOPS" == "true" ]]; then
-                echo '- **Profile:** all 11 desktop environments on every selected OS release'
+                echo '- **Profile:** '
               else
-                if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on every selected OS release'; fi
-                if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on every selected OS release'; fi
-                if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on every selected OS release'; fi
-                if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon on every selected OS release'; fi
-                if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma on every selected OS release'; fi
-                if [[ "$DESKTOP_KDE_NEON" == "true" ]]; then echo '- **Desktop:** KDE Neon on every selected OS release'; fi
-                if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on every selected OS release'; fi
-                if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on every selected OS release'; fi
-                if [[ "$DESKTOP_XMONAD" == "true" ]]; then echo '- **Desktop:** Xmonad on every selected OS release'; fi
-                if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on every selected OS release'; fi
-                if [[ "$DESKTOP_DEEPIN" == "true" ]]; then echo '- **Desktop:** Deepin on every selected OS release'; fi
+                if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on compatible selected OS releases'; fi
+                if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on compatible selected OS releases'; fi
               fi
             fi
             echo
@@ -375,6 +356,8 @@ jobs:
             echo '- Home Assistant and OpenMediaVault: Debian Bookworm/Trixie.'
             echo '- Kali: Debian Bookworm/Trixie/Forky only.'
             echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
+            echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, and Budgie only where the current Armbian desktop definitions declare them available.'
+            echo '- KDE Neon, Xmonad, and Deepin are skipped because current Armbian configng marks them unsupported or disabled.'
             echo
             echo '## Common image parameters'
             echo
