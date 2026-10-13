@@ -305,7 +305,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          RUN_STARTED_AT: ${{ github.run_started_at }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
           SERVER: ${{ inputs.server }}
@@ -327,7 +326,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stamp="$(TZ=Asia/Jakarta date -d "$RUN_STARTED_AT" +'%Y-%m-%d_%H-%M')"
+          stamp="$(TZ=Asia/Jakarta date +'%Y-%m-%d_%H-%M')"
           server=""
           minimal=""
           applications=""
