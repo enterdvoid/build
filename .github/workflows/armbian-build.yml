@@ -1,10 +1,6 @@
 name: DBAI Armbian Build
 
 on:
-  # TEMPORARY: matrix-only validation; remove after test.
-  push:
-    paths:
-      - '.github/run-dabai-matrix-validation'
   workflow_dispatch:
     inputs:
       filesystem:
@@ -133,16 +129,16 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem || 'both' }}
-          OS_GROUP_INPUT: ${{ inputs.os_group || 'all' }}
-          SERVER: ${{ inputs.server || github.event_name == 'push' }}
-          MINIMAL: ${{ inputs.minimal || github.event_name == 'push' }}
-          APPLICATIONS: ${{ inputs.applications || github.event_name == 'push' }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
+          SERVER: ${{ inputs.server }}
+          MINIMAL: ${{ inputs.minimal }}
+          APPLICATIONS: ${{ inputs.applications }}
           HOME_ASSISTANT: ${{ inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
-          DESKTOP: ${{ inputs.desktop || github.event_name == 'push' }}
+          DESKTOP: ${{ inputs.desktop }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
@@ -308,7 +304,7 @@ jobs:
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
-          DESKTOP: ${{ inputs.desktop || github.event_name == 'push' }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
@@ -316,7 +312,6 @@ jobs:
           echo "Build matrix generated."
 
   create_release:
-    if: github.event_name != 'push'
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
@@ -422,7 +417,6 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
   build:
-    if: github.event_name != 'push'
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
