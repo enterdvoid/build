@@ -13,7 +13,7 @@ on:
           - ext4
           - btrfs
       os_group:
-        description: "Kelompok OS: semua, Debian, Ubuntu, atau fokus Trixie"
+        description: "Semua OS, keluarga Debian/Ubuntu, atau satu release spesifik"
         required: true
         type: choice
         default: all
@@ -21,27 +21,27 @@ on:
           - all
           - debian
           - ubuntu
+          - bookworm
           - trixie
-      all_build_types:
-        description: "FULL BUILD: semua profil kompatibel; matikan untuk memilih subset di bawah"
-        required: true
-        type: boolean
-        default: true
+          - forky
+          - jammy
+          - noble
+          - resolute
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
         required: true
         type: boolean
-        default: false
+        default: true
       minimal:
         description: "Minimal: semua release dalam kelompok OS terpilih"
         required: true
         type: boolean
-        default: false
+        default: true
       applications:
-        description: "Applications: semua aplikasi pada OS yang kompatibel"
+        description: "Applications: semua aplikasi yang kompatibel dengan OS terpilih"
         required: true
         type: boolean
-        default: false
+        default: true
       home_assistant:
         description: "Application: Home Assistant (Bookworm/Trixie)"
         required: true
@@ -62,11 +62,11 @@ on:
         required: true
         type: boolean
         default: false
-      all_desktops:
-        description: "Desktop: semua environment aktif pada release OS yang kompatibel"
+      desktop:
+        description: "Desktop: semua environment yang tersedia pada OS terpilih"
         required: true
         type: boolean
-        default: false
+        default: true
       desktop_xfce:
         description: "Desktop: XFCE pada release OS yang kompatibel"
         required: true
@@ -126,7 +126,6 @@ jobs:
         env:
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
@@ -134,7 +133,7 @@ jobs:
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
-          ALL_DESKTOPS: ${{ inputs.all_desktops }}
+          DESKTOP: ${{ inputs.desktop }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
@@ -151,7 +150,12 @@ jobs:
               "all": ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"],
               "debian": ["bookworm", "trixie", "forky"],
               "ubuntu": ["jammy", "noble", "resolute"],
+              "bookworm": ["bookworm"],
               "trixie": ["trixie"],
+              "forky": ["forky"],
+              "jammy": ["jammy"],
+              "noble": ["noble"],
+              "resolute": ["resolute"],
           }
           release_group = os.environ.get("OS_GROUP_INPUT", "all").lower()
           if release_group not in release_groups:
@@ -164,10 +168,9 @@ jobs:
               raise SystemExit(f"Invalid filesystem selection: {filesystem_input}")
 
           truthy = lambda name: os.environ.get(name, "false").lower() == "true"
-          all_types = truthy("ALL_BUILD_TYPES")
           selected = {
-              "server": all_types or truthy("SERVER"),
-              "minimal": all_types or truthy("MINIMAL"),
+              "server": truthy("SERVER"),
+              "minimal": truthy("MINIMAL"),
           }
 
           # App support is explicit so an "all applications" run only creates compatible combinations.
@@ -177,7 +180,7 @@ jobs:
               ("kali", "applications-kali", "KALI", {"bookworm", "trixie", "forky"}),
               ("docker-ce", "docker-ce", "DOCKER_CE", {"bookworm", "trixie", "jammy", "noble", "resolute"}),
           ]
-          select_all_apps = all_types or truthy("APPLICATIONS")
+          select_all_apps = truthy("APPLICATIONS")
           selected_apps = [
               (variant, extension, supported_releases)
               for variant, extension, key, supported_releases in app_variants
@@ -197,7 +200,7 @@ jobs:
           selected_desktops = [
               (variant, supported_releases)
               for variant, key, supported_releases in desktop_variants
-              if all_types or truthy("ALL_DESKTOPS") or truthy(key)
+              if truthy("DESKTOP") or truthy(key)
           ]
 
           matrix = []
@@ -250,11 +253,14 @@ jobs:
         env:
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
+          SERVER: ${{ inputs.server }}
+          MINIMAL: ${{ inputs.minimal }}
+          APPLICATIONS: ${{ inputs.applications }}
+          DESKTOP: ${{ inputs.desktop }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
-          echo "Build all profiles: $ALL_BUILD_TYPES"
+          echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop=$DESKTOP"
           echo "Build matrix generated."
 
   create_release:
@@ -275,7 +281,6 @@ jobs:
           RUN_STARTED_AT: ${{ github.run_started_at }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
@@ -283,7 +288,7 @@ jobs:
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
-          ALL_DESKTOPS: ${{ inputs.all_desktops }}
+          DESKTOP: ${{ inputs.desktop }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
@@ -308,28 +313,27 @@ jobs:
             echo
             echo "- **OS release group:** ${OS_GROUP_INPUT}"
             echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
-            if [[ "$ALL_BUILD_TYPES" == "true" ]]; then
-              echo '- **Profiles:** Server and Minimal on every selected OS release; all compatible Applications and buildable Desktop combinations across the selected OS releases.'
+            if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
+            if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
+            if [[ "$APPLICATIONS" == "true" ]]; then
+              echo '- **Profile:** all compatible Applications variants'
             else
-              if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
-              if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
-              if [[ "$APPLICATIONS" == "true" ]]; then echo '- **Profile:** all compatible Applications variants'; fi
               if [[ "$HOME_ASSISTANT" == "true" ]]; then echo '- **Application:** Home Assistant on supported releases'; fi
               if [[ "$OPENMEDIAVAULT" == "true" ]]; then echo '- **Application:** OpenMediaVault on supported releases'; fi
               if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali on Debian releases'; fi
               if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE on supported Debian/Ubuntu releases'; fi
-              if [[ "$ALL_DESKTOPS" == "true" ]]; then
-                echo '- **Desktop:** all buildable environments on compatible selected OS releases'
-              else
-                if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on compatible selected OS releases'; fi
-                if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on compatible selected OS releases'; fi
-              fi
+            fi
+            if [[ "$DESKTOP" == "true" ]]; then
+              echo '- **Profile:** all buildable Desktop environments on compatible selected OS releases'
+            else
+              if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on compatible selected OS releases'; fi
+              if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on compatible selected OS releases'; fi
             fi
             echo
             echo '## Application compatibility'
