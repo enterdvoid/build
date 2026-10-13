@@ -27,6 +27,19 @@ on:
           - jammy
           - noble
           - resolute
+      cleanup_run_history:
+        description: "HAPUS permanen seluruh riwayat workflow run di repository (tidak membangun image)"
+        required: true
+        type: boolean
+        default: false
+      confirm_run_history_cleanup:
+        description: "Wajib pilih DELETE ALL RUN HISTORY untuk menjalankan penghapusan"
+        required: true
+        type: choice
+        default: NO
+        options:
+          - NO
+          - DELETE ALL RUN HISTORY
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
         required: true
@@ -122,6 +135,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: inputs.cleanup_run_history != true
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -312,14 +326,54 @@ jobs:
           echo "Build matrix generated."
 
   create_release:
+    if: inputs.cleanup_run_history != true
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_title: ${{ steps.release.outputs.release_title }}
     steps:
-      - name: Create descriptive release
+      - name: Checkout and validate release prerequisites
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Check board and selected application extensions
+        env:
+          MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./compile.sh || { echo "::error::compile.sh is missing or not executable."; exit 1; }
+          test -f config/boards/aml-s9xx-box.tvb || { echo "::error::config/boards/aml-s9xx-box.tvb is missing."; exit 1; }
+          python3 - <<'PY'
+          import json, os, pathlib
+          matrix = json.loads(os.environ["MATRIX_JSON"])
+          extension_by_variant = {
+              "home-assistant": "applications-ha",
+              "openmediavault": "applications-omv",
+              "kali": "applications-kali",
+              "docker-ce": "docker-ce",
+          }
+          root = pathlib.Path(".")
+          app_rows = [row for row in matrix.get("include", []) if row.get("profile") == "applications"]
+          for row in app_rows:
+              variant = row.get("variant")
+              extension = extension_by_variant.get(variant)
+              if not extension:
+                  raise SystemExit(f"Unknown application variant in matrix: {variant!r}")
+              candidates = (
+                  root / "extensions" / f"{extension}.sh",
+                  root / "extensions" / extension / f"{extension}.sh",
+                  root / "userpatches" / "extensions" / f"{extension}.sh",
+                  root / "userpatches" / "extensions" / extension / f"{extension}.sh",
+              )
+              if not any(path.is_file() for path in candidates):
+                  raise SystemExit(f"Required Armbian extension '{extension}' not found for variant '{variant}'.")
+          print(f"Preflight passed: board exists and all {len(app_rows)} application matrix entries map to available extensions.")
+          PY
+      - name: Create one release with selected profile title
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -329,6 +383,7 @@ jobs:
           RUN_STARTED_AT: ${{ github.run_started_at }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
+          MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
@@ -351,10 +406,41 @@ jobs:
           set -euo pipefail
           stamp="$(TZ=Asia/Jakarta date -d "$RUN_STARTED_AT" +'%Y-%m-%d_%H-%M')"
           tag="dbai-armbian-build-${RUN_ID}"
-          release_title="DBAI Armbian Build ${stamp}"
+
+          # Derive the category from the actual matrix so the title reflects what will be built.
+          mapfile -t profiles < <(python3 - <<'PY'
+          import json, os
+          matrix = json.loads(os.environ["MATRIX_JSON"])
+          profiles = {row["profile"] for row in matrix.get("include", [])}
+          for name in ["server", "minimal", "applications", "desktop"]:
+              if name in profiles:
+                  print(name)
+          PY
+          )
+          if [[ "${#profiles[@]}" -eq 0 ]]; then
+            echo "::error::No selected profile found in generated matrix."
+            exit 1
+          fi
+          if [[ "${#profiles[@]}" -eq 4 ]]; then
+            category_title="All"
+          else
+            category_title=""
+            for profile in "${profiles[@]}"; do
+              case "$profile" in
+                server) display="Server" ;;
+                minimal) display="Minimal" ;;
+                applications) display="Applications" ;;
+                desktop) display="Desktop" ;;
+                *) echo "::error::Unknown profile: $profile"; exit 1 ;;
+              esac
+              if [[ -n "$category_title" ]]; then category_title+=" + "; fi
+              category_title+="$display"
+            done
+          fi
+          release_title="DBAI Armbian ${category_title} Build ${stamp}"
           notes_file="release-summary.md"
           {
-            echo '# DBAI Armbian Build'
+            echo "# ${release_title}"
             echo
             echo "**Workflow started (Asia/Jakarta): ${stamp}**"
             echo
@@ -362,6 +448,9 @@ jobs:
             echo
             echo "- **OS release group:** ${OS_GROUP_INPUT}"
             echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
+            echo "- **Selected profile groups:** ${category_title}"
+            echo "- **Matrix jobs:** $(python3 -c 'import json,os; print(len(json.loads(os.environ["MATRIX_JSON"]).get("include", [])))')"
+            echo "- **Image asset format:** `aml-s9xx-box-{filesystem}-{os-release}-{variant}.img.xz` (or `.img`)"
             if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
             if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
             if [[ "$APPLICATIONS" == "true" ]]; then
@@ -402,11 +491,13 @@ jobs:
             echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB'
             echo '- **Image output:** compressed XZ when produced by Armbian Builder, with SHA-256 checksum'
             echo
-            echo '## Notes'
+            echo '## Integrity and availability'
             echo
-            echo '- This section documents the selected build matrix. Only successful jobs upload image and checksum assets.'
+            echo '- Only successful jobs upload image assets.'
+            echo '- Each image has a `.manifest.txt` with board, filesystem, OS release, profile, variant, byte size, and SHA-256.'
+            echo '- A consolidated `SHA256SUMS.txt` is finalized after all matrix jobs finish; per-image checksum sidecars are removed only after upload succeeds.'
             echo '- Requested raw image size is not the compressed download file size.'
-            echo '- Actual image filenames and compressed sizes are shown in the Release assets list.'
+            echo '- Failed build jobs are excluded from the consolidated checksum file.'
             echo
             echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
           } > "$notes_file"
@@ -415,8 +506,11 @@ jobs:
           else
             gh release create "$tag" --title "$release_title" --notes-file "$notes_file" --prerelease --latest=false
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_title=$release_title" >> "$GITHUB_OUTPUT"
+          echo "Prepared release: $release_title ($tag)"
   build:
+    if: inputs.cleanup_run_history != true
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
@@ -619,22 +713,25 @@ jobs:
 
           ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
 
-      - name: Prepare image and checksum for release
+      - name: Prepare image, checksum, and metadata for release
         if: success()
         env:
           FS: ${{ matrix.filesystem }}
           PROFILE: ${{ matrix.profile }}
           VARIANT: ${{ matrix.variant }}
           RELEASE: ${{ matrix.release }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          image="$(find output/images -maxdepth 1 -type f \( -name '*.img.xz' -o -name '*.img' \) -print -quit)"
-          if [[ -z "$image" ]]; then
-            echo "::error::No .img.xz or .img file found in output/images."
+          mapfile -t images < <(find output/images -maxdepth 1 -type f \( -name '*.img.xz' -o -name '*.img' \) -print | sort)
+          if [[ "${#images[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one image in output/images, found ${#images[@]}."
+            printf '%s\n' "${images[@]}"
             find output/images -maxdepth 1 -type f -print || true
             exit 1
           fi
+          image="${images[0]}"
 
           if [[ "$image" == *.img.xz ]]; then
             suffix="img.xz"
@@ -642,19 +739,43 @@ jobs:
             suffix="img"
           fi
 
-          asset="aml-s9xx-box-${FS}-${RELEASE}-${PROFILE}-${VARIANT}.${suffix}"
+          asset="aml-s9xx-box-${FS}-${RELEASE}-${VARIANT}.${suffix}"
           cp "$image" "dist/$asset"
-          sha256sum "dist/$asset" > "dist/${asset}.sha256"
+          # The checksum must contain only the asset basename for portable verification.
+          (cd dist && sha256sum "$asset" > "${asset}.sha256")
+          bytes="$(stat -c '%s' "dist/$asset")"
+          size_human="$(du -h "dist/$asset" | cut -f1)"
+          digest="$(awk '{print $1}' "dist/${asset}.sha256")"
+          {
+            echo "asset=${asset}"
+            echo "source_image=${image}"
+            echo "board=aml-s9xx-box"
+            echo "filesystem=${FS}"
+            echo "release=${RELEASE}"
+            echo "profile=${PROFILE}"
+            echo "variant=${VARIANT}"
+            echo "size_bytes=${bytes}"
+            echo "size_human=${size_human}"
+            echo "sha256=${digest}"
+          } > "dist/${asset}.manifest.txt"
           ls -lh dist/
 
-      - name: Upload image and checksum to GitHub Release
+      - name: Upload image, checksum, and metadata to GitHub Release
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.create_release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
+
+      - name: Remove local image files after successful upload
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- dist output/images
+          echo "Local image files removed; Release assets remain available."
 
       - name: Show runner specs and remaining storage (AFTER BUILD)
         if: always()
@@ -693,3 +814,94 @@ jobs:
             ${{ runner.temp }}/dbai-after-build-report.txt
           if-no-files-found: ignore
           retention-days: 7
+
+  finalize_release:
+    needs: [create_release, build]
+    if: always() && inputs.cleanup_run_history != true && needs.create_release.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
+    steps:
+      - name: Consolidate per-image checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo "::error::Release tag output is empty."
+            exit 1
+          fi
+          asset_names="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          mapfile -t checksum_assets < <(printf '%s\n' "$asset_names" | grep -E '\.img(\.xz)?\.sha256$' || true)
+          if [[ "${#checksum_assets[@]}" -eq 0 ]]; then
+            echo "No successful image checksum assets exist; no SHA256SUMS.txt will be published."
+            exit 0
+          fi
+          mkdir -p checksum-input
+          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input
+          {
+            for checksum in checksum-input/*.sha256; do
+              [[ -f "$checksum" ]] || continue
+              cat "$checksum"
+            done
+          } | sort -k2,2 > SHA256SUMS.txt
+          if [[ ! -s SHA256SUMS.txt ]]; then
+            echo "::error::Checksum assets were found, but the combined checksum file is empty."
+            exit 1
+          fi
+          echo "Combined checksums:"
+          cat SHA256SUMS.txt
+          gh release upload "$RELEASE_TAG" SHA256SUMS.txt --clobber
+          # Delete sidecars only after the consolidated file uploads successfully.
+          for asset in "${checksum_assets[@]}"; do
+            gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+          done
+          echo "Published SHA256SUMS.txt and removed ${#checksum_assets[@]} individual checksum assets."
+
+  cleanup_workflow_history:
+    if: inputs.cleanup_run_history == true
+    name: Delete workflow run history
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: write
+    steps:
+      - name: Permanently delete repository workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFIRMATION: ${{ inputs.confirm_run_history_cleanup }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$CONFIRMATION" != "DELETE ALL RUN HISTORY" ]]; then
+            echo "::error::Cleanup not authorized. Set confirmation to 'DELETE ALL RUN HISTORY'. No run was deleted."
+            exit 1
+          fi
+          repo="$GITHUB_REPOSITORY"
+          current="$CURRENT_RUN_ID"
+          mapfile -t run_ids < <(gh api --paginate "repos/$repo/actions/runs?per_page=100" --jq '.workflow_runs[].id' | sort -un)
+          echo "Found ${#run_ids[@]} workflow runs. Deleting all runs except the current cleanup run."
+          deleted=0
+          failed=0
+          for run_id in "${run_ids[@]}"; do
+            [[ -n "$run_id" ]] || continue
+            [[ "$run_id" == "$current" ]] && continue
+            if gh api --silent --method DELETE "repos/$repo/actions/runs/$run_id"; then
+              deleted=$((deleted + 1))
+              echo "Deleted workflow run $run_id"
+            else
+              failed=$((failed + 1))
+              echo "::warning::Could not delete workflow run $run_id"
+            fi
+            sleep 0.2
+          done
+          echo "Deleted $deleted prior workflow runs; failures: $failed."
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::Some workflow runs may remain."
+            exit 1
+          fi
+          echo "Current cleanup run intentionally retained; GitHub may not permit a running workflow to delete itself."
