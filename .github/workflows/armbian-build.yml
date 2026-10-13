@@ -1,10 +1,6 @@
 name: DBAI Armbian Build
 
 on:
-  # TEMPORARY: single XFCE regression job after validating the complete matrix.
-  push:
-    paths:
-      - '.github/workflows/armbian-build.yml'
   workflow_dispatch:
     inputs:
       filesystem:
@@ -27,10 +23,10 @@ on:
           - ubuntu
           - trixie
       all_build_types:
-        description: "Build semua profil pada semua OS terpilih (mengabaikan checkbox profil lainnya)"
+        description: "FULL BUILD: semua profil kompatibel; matikan untuk memilih subset di bawah"
         required: true
         type: boolean
-        default: false
+        default: true
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
         required: true
@@ -128,10 +124,9 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem || (github.event_name == 'push' && 'both') || 'both' }}
-          OS_GROUP_INPUT: ${{ inputs.os_group || (github.event_name == 'push' && 'all') || 'all' }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types || (github.event_name == 'push' && true) }}
-          TEST_ONLY: ${{ github.event_name == 'push' }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
@@ -243,17 +238,6 @@ jobs:
 
           full_matrix_count = len(matrix)
           print(f"Full selected matrix: {full_matrix_count} jobs for OS group '{release_group}' and filesystem(s): {', '.join(filesystems)}", file=sys.stderr)
-          if truthy("TEST_ONLY"):
-              matrix = [
-                  job for job in matrix
-                  if job["filesystem"] == "ext4"
-                  and job["profile"] == "desktop"
-                  and job["variant"] == "xfce"
-                  and job["release"] == "trixie"
-              ]
-              if len(matrix) != 1:
-                  raise SystemExit(f"Regression filter expected one XFCE/Trixie/ext4 job, got {len(matrix)}")
-              print(f"::notice::Matrix expansion validated ({full_matrix_count} jobs); running only one regression build.", file=sys.stderr)
           if not matrix:
               raise SystemExit("Tidak ada build yang dipilih. Pilih satu atau beberapa profil image.")
           if len(matrix) > 256:
@@ -264,9 +248,9 @@ jobs:
           PY
       - name: Show selected matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem || (github.event_name == 'push' && 'both') || 'both' }}
-          OS_GROUP_INPUT: ${{ inputs.os_group || (github.event_name == 'push' && 'all') || 'all' }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types || (github.event_name == 'push' && true) }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
@@ -289,10 +273,9 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
           RUN_STARTED_AT: ${{ github.run_started_at }}
-          FILESYSTEM_INPUT: ${{ inputs.filesystem || (github.event_name == 'push' && 'both') || 'both' }}
-          OS_GROUP_INPUT: ${{ inputs.os_group || (github.event_name == 'push' && 'all') || 'all' }}
-          ALL_BUILD_TYPES: ${{ inputs.all_build_types || (github.event_name == 'push' && true) }}
-          TEST_ONLY: ${{ github.event_name == 'push' }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
@@ -325,10 +308,8 @@ jobs:
             echo
             echo "- **OS release group:** ${OS_GROUP_INPUT}"
             echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
-            if [[ "$TEST_ONLY" == "true" ]]; then
-              echo '- **Temporary regression test:** full matrix expansion validated; only ext4 / desktop / xfce / trixie was actually built and uploaded.'
-            elif [[ "$ALL_BUILD_TYPES" == "true" ]]; then
-              echo '- **Profiles:** Server and Minimal on every selected OS release; all compatible application variants; all buildable desktop environments on compatible releases; .'
+            if [[ "$ALL_BUILD_TYPES" == "true" ]]; then
+              echo '- **Profiles:** Server and Minimal on every selected OS release; all compatible Applications and buildable Desktop combinations across the selected OS releases.'
             else
               if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
               if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
