@@ -27,6 +27,19 @@ on:
           - jammy
           - noble
           - resolute
+      cleanup_run_history:
+        description: "HAPUS permanen seluruh riwayat workflow run di repository (tidak membangun image)"
+        required: true
+        type: boolean
+        default: false
+      confirm_run_history_cleanup:
+        description: "Wajib pilih DELETE ALL RUN HISTORY untuk menjalankan penghapusan"
+        required: true
+        type: choice
+        default: NO
+        options:
+          - NO
+          - DELETE ALL RUN HISTORY
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
         required: true
@@ -122,6 +135,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: inputs.cleanup_run_history != true
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -296,6 +310,7 @@ jobs:
           echo "Build matrix generated."
 
   create_release:
+    if: inputs.cleanup_run_history != true
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
@@ -403,6 +418,7 @@ jobs:
           echo "release_title=$title" >> "$GITHUB_OUTPUT"
           echo "Prepared release: $title ($tag)"
   build:
+    if: inputs.cleanup_run_history != true
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
@@ -709,7 +725,7 @@ jobs:
 
   finalize_release:
     needs: [create_release, build]
-    if: always() && needs.create_release.result == 'success'
+    if: always() && inputs.cleanup_run_history != true && needs.create_release.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -757,3 +773,46 @@ jobs:
             gh release delete-asset "$RELEASE_TAG" "$asset" --yes
           done
           echo "Published SHA256SUMS.txt and removed ${#checksum_assets[@]} individual checksum assets."
+
+  cleanup_workflow_history:
+    if: inputs.cleanup_run_history == true
+    name: Delete workflow run history
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: write
+    steps:
+      - name: Permanently delete repository workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFIRMATION: ${{ inputs.confirm_run_history_cleanup }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$CONFIRMATION" != "DELETE ALL RUN HISTORY" ]]; then
+            echo "::error::Cleanup not authorized. Set confirmation to 'DELETE ALL RUN HISTORY'. No run was deleted."
+            exit 1
+          fi
+
+          repo="$GITHUB_REPOSITORY"
+          current="$CURRENT_RUN_ID"
+          mapfile -t run_ids < <(gh api --paginate "repos/$repo/actions/runs?per_page=100" --jq '.workflow_runs[].id' | sort -un)
+          echo "Found ${#run_ids[@]} workflow runs. Deleting all runs, with the cleanup run last."
+
+          deleted=0
+          for run_id in "${run_ids[@]}"; do
+            [[ -n "$run_id" ]] || continue
+            [[ "$run_id" == "$current" ]] && continue
+            gh api --silent --method DELETE "repos/$repo/actions/runs/$run_id"
+            deleted=$((deleted + 1))
+            echo "Deleted workflow run $run_id"
+          done
+
+          # Delete this cleanup run last so the repository can end with an empty run history.
+          if gh api --silent --method DELETE "repos/$repo/actions/runs/$current"; then
+            echo "Cleanup run deleted as the final action."
+          else
+            echo "::warning::Old runs were deleted, but GitHub did not allow deleting the current cleanup run."
+          fi
+          echo "Completed deletion attempts for $deleted prior workflow runs."
