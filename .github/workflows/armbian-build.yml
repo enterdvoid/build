@@ -348,7 +348,13 @@ jobs:
                 *) echo "::error::Unknown profile: $profile"; exit 1 ;;
               esac
             done
-            category_title="$(IFS=' + '; echo "${display_profiles[*]}")"
+            category_title=""
+            for display in "${display_profiles[@]}"; do
+              if [[ -n "$category_title" ]]; then
+                category_title+=" + "
+              fi
+              category_title+="$display"
+            done
           fi
           title="DBAI Armbian ${category_title} Build ${stamp}"
           notes_file="release-notes.md"
