@@ -375,6 +375,26 @@ jobs:
           fi
           echo "Btrfs kernel support is available."
 
+      # Register QEMU/binfmt on the runner host so Docker can execute ARM64
+      # userspace while the x86_64 GitHub runner builds the ARM64 rootfs.
+      - name: Enable ARM64 emulation with QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Verify ARM64 container emulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Testing ARM64 container execution before starting Armbian build..."
+          result="$(docker run --rm --platform linux/arm64 alpine:3.20 uname -m)"
+          echo "ARM64 container reported architecture: $result"
+          [[ "$result" == "aarch64" || "$result" == "arm64" ]] || {
+            echo "::error::QEMU/binfmt verification failed; expected aarch64/arm64, got: $result"
+            exit 1
+          }
+          echo "ARM64 emulation is ready."
+
       - name: Build Armbian image
         env:
           FS: ${{ matrix.filesystem }}
