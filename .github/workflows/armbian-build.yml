@@ -494,7 +494,6 @@ jobs:
             echo '## Integrity and availability'
             echo
             echo '- Only successful jobs upload image assets.'
-            echo '- Each image has a `.manifest.txt` with board, filesystem, OS release, profile, variant, byte size, and SHA-256.'
             echo '- A consolidated `SHA256SUMS.txt` is finalized after all matrix jobs finish; per-image checksum sidecars are removed only after upload succeeds.'
             echo '- Requested raw image size is not the compressed download file size.'
             echo '- Failed build jobs are excluded from the consolidated checksum file.'
