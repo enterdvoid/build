@@ -40,6 +40,24 @@ on:
         options:
           - NO
           - DELETE ALL RUN HISTORY
+      repair_legacy_release:
+        description: "Perbaiki metadata release lama dan nama asset tanpa membangun ulang image"
+        required: true
+        type: boolean
+        default: false
+      confirm_legacy_release_repair:
+        description: "Wajib pilih REPAIR LEGACY RELEASE untuk mengubah release lama"
+        required: true
+        type: choice
+        default: NO
+        options:
+          - NO
+          - REPAIR LEGACY RELEASE
+      legacy_release_tag:
+        description: "Tag release lama yang akan diperbaiki"
+        required: true
+        type: string
+        default: dbai-armbian-build-38351456806
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
         required: true
@@ -135,7 +153,7 @@ concurrency:
 
 jobs:
   prepare:
-    if: inputs.cleanup_run_history != true
+    if: inputs.cleanup_run_history != true && inputs.repair_legacy_release != true
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -310,7 +328,7 @@ jobs:
           echo "Build matrix generated."
 
   create_release:
-    if: inputs.cleanup_run_history != true
+    if: inputs.cleanup_run_history != true && inputs.repair_legacy_release != true
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
@@ -418,7 +436,7 @@ jobs:
           echo "release_title=$title" >> "$GITHUB_OUTPUT"
           echo "Prepared release: $title ($tag)"
   build:
-    if: inputs.cleanup_run_history != true
+    if: inputs.cleanup_run_history != true && inputs.repair_legacy_release != true
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
@@ -725,7 +743,7 @@ jobs:
 
   finalize_release:
     needs: [create_release, build]
-    if: always() && inputs.cleanup_run_history != true && needs.create_release.result == 'success'
+    if: always() && inputs.cleanup_run_history != true && inputs.repair_legacy_release != true && needs.create_release.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -773,6 +791,207 @@ jobs:
             gh release delete-asset "$RELEASE_TAG" "$asset" --yes
           done
           echo "Published SHA256SUMS.txt and removed ${#checksum_assets[@]} individual checksum assets."
+
+
+  repair_legacy_release:
+    if: inputs.repair_legacy_release == true && inputs.cleanup_run_history != true
+    name: Repair legacy release metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Rename legacy assets and consolidate metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.legacy_release_tag }}
+          CONFIRMATION: ${{ inputs.confirm_legacy_release_repair }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$CONFIRMATION" != "REPAIR LEGACY RELEASE" ]]; then
+            echo "::error::Repair not authorized. Set confirmation to 'REPAIR LEGACY RELEASE'. No release was changed."
+            exit 1
+          fi
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo "::error::Release tag must not be empty."
+            exit 1
+          fi
+
+          plan="$RUNNER_TEMP/legacy-release.json"
+          gh release view "$RELEASE_TAG" --json name,createdAt,body,assets > "$plan"
+
+          # Plan a safe, idempotent rename and infer categories from the release's image assets.
+          python3 - "$plan" "$RUNNER_TEMP/repair-plan.json" <<'PY'
+          import json, re, sys
+          src, dest = sys.argv[1:]
+          with open(src, encoding="utf-8") as f:
+              release = json.load(f)
+
+          profile_order = ["server", "minimal", "applications", "desktop"]
+          profiles = set()
+          image_re = re.compile(r"^aml-s9xx-box-(ext4|btrfs)-([^-]+)-(.+)\.img(?:\.xz)?$")
+          duplicate_re = re.compile(r"-(server|minimal)-\1(?=\.img(?:\.xz)?$)")
+          assets = []
+          for asset in release.get("assets", []):
+              name = asset["name"]
+              # A checksum sidecar follows the image's name; normalize its image segment too.
+              base = name[:-7] if name.endswith(".sha256") else name
+              new_base = duplicate_re.sub(r"-\1", base)
+              new_name = new_base + (".sha256" if name.endswith(".sha256") else "")
+              image_name = new_base
+              if image_name.endswith((".img", ".img.xz")):
+                  match = image_re.match(image_name)
+                  if match:
+                      variant = match.group(3)
+                      if variant in ("server", "minimal"):
+                          profiles.add(variant)
+                      elif variant in ("home-assistant", "openmediavault", "kali", "docker-ce"):
+                          profiles.add("applications")
+                      elif variant in ("xfce", "mate", "gnome", "cinnamon", "kde-plasma", "i3-wm", "enlightenment", "budgie", "lxqt"):
+                          profiles.add("desktop")
+              assets.append({
+                  "id": asset["id"], "old_name": name, "new_name": new_name,
+                  "size": asset.get("size", 0), "is_image": image_name.endswith((".img", ".img.xz"))
+              })
+
+          if not profiles:
+              raise SystemExit("Could not infer any supported image profile from this release; refusing to change it.")
+          title_match = re.search(r"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})", release.get("name", ""))
+          if title_match:
+              stamp = title_match.group(1)
+          else:
+              from datetime import datetime
+              from zoneinfo import ZoneInfo
+              created = release.get("createdAt", "")
+              stamp = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d_%H-%M")
+          os_group_match = re.search(r"\*\*OS release group:\*\*\s*([^\s]+)", release.get("body", ""))
+          fs_match = re.search(r"\*\*Filesystem target:\*\*\s*([^\s]+)", release.get("body", ""))
+          with open(dest, "w", encoding="utf-8") as f:
+              json.dump({
+                  "stamp": stamp,
+                  "profiles": [p for p in profile_order if p in profiles],
+                  "assets": assets,
+                  "os_group": os_group_match.group(1) if os_group_match else "unknown",
+                  "filesystem": fs_match.group(1) if fs_match else "unknown"
+              }, f)
+          PY
+
+          # Rename image and sidecar assets in-place; no large firmware download is needed.
+          while IFS=$'\t' read -r asset_id old_name new_name; do
+            [[ -n "$asset_id" ]] || continue
+            if [[ "$old_name" != "$new_name" ]]; then
+              echo "Renaming release asset: $old_name -> $new_name"
+              gh api --silent --method PATCH "repos/$GH_REPO/releases/assets/$asset_id" -f "name=$new_name"
+            fi
+          done < <(jq -r '.assets[] | [.id, .old_name, .new_name] | @tsv' "$RUNNER_TEMP/repair-plan.json")
+
+          mapfile -t profiles < <(jq -r '.profiles[]' "$RUNNER_TEMP/repair-plan.json")
+          if [[ "${#profiles[@]}" -eq 4 ]]; then
+            category_title="All"
+          else
+            category_title=""
+            for profile in "${profiles[@]}"; do
+              case "$profile" in
+                server) display="Server" ;;
+                minimal) display="Minimal" ;;
+                applications) display="Applications" ;;
+                desktop) display="Desktop" ;;
+                *) echo "::error::Unknown profile $profile"; exit 1 ;;
+              esac
+              if [[ -n "$category_title" ]]; then category_title+=" + "; fi
+              category_title+="$display"
+            done
+          fi
+          stamp="$(jq -r '.stamp' "$RUNNER_TEMP/repair-plan.json")"
+          os_group="$(jq -r '.os_group' "$RUNNER_TEMP/repair-plan.json")"
+          filesystem="$(jq -r '.filesystem' "$RUNNER_TEMP/repair-plan.json")"
+          title="DBAI Armbian $category_title Build $stamp"
+
+          rm -rf checksum-input legacy-manifests
+          mkdir -p checksum-input legacy-manifests
+          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input
+
+          # Build portable combined sums and per-image manifests using the corrected asset names.
+          : > SHA256SUMS.txt
+          while IFS=$'\t' read -r asset_name size; do
+            [[ -n "$asset_name" ]] || continue
+            checksum="checksum-input/$asset_name.sha256"
+            if [[ ! -f "$checksum" ]]; then
+              echo "::error::Missing checksum sidecar for $asset_name"
+              exit 1
+            fi
+            digest="$(awk 'NR == 1 {print $1; exit}' "$checksum")"
+            if [[ ! "$digest" =~ ^[a-fA-F0-9]{64}$ ]]; then
+              echo "::error::Invalid SHA-256 value for $asset_name"
+              exit 1
+            fi
+            printf '%s  %s\n' "$digest" "$asset_name" >> SHA256SUMS.txt
+
+            rest="${asset_name#aml-s9xx-box-}"
+            fs="${rest%%-*}"
+            rest="${rest#*-}"
+            release="${rest%%-*}"
+            variant="${rest#*-}"
+            variant="${variant%.img.xz}"
+            variant="${variant%.img}"
+            case "$variant" in
+              server|minimal) profile="$variant" ;;
+              home-assistant|openmediavault|kali|docker-ce) profile="applications" ;;
+              *) profile="desktop" ;;
+            esac
+            size_human="$(numfmt --to=iec-i --suffix=B "$size")"
+            {
+              echo "asset=$asset_name"
+              echo "source_image=legacy release asset"
+              echo "board=aml-s9xx-box"
+              echo "filesystem=$fs"
+              echo "release=$release"
+              echo "profile=$profile"
+              echo "variant=$variant"
+              echo "size_bytes=$size"
+              echo "size_human=$size_human"
+              echo "sha256=$digest"
+            } > "legacy-manifests/$asset_name.manifest.txt"
+          done < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.name | endswith(".img") or endswith(".img.xz")) | [.name, (.size | tostring)] | @tsv')
+
+          sort -k2,2 -o SHA256SUMS.txt SHA256SUMS.txt
+          if [[ ! -s SHA256SUMS.txt ]]; then
+            echo "::error::No checksum entries were generated."
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" legacy-manifests/*.manifest.txt SHA256SUMS.txt --clobber
+
+          # Only remove sidecars after the consolidated checksum file uploaded successfully.
+          mapfile -t checksum_assets < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -E '\.img(\.xz)?\.sha256$' || true)
+          for asset in "${checksum_assets[@]}"; do
+            gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+          done
+
+          notes="release-notes.md"
+          {
+            echo "# $title"
+            echo
+            echo "**Release generated (Asia/Jakarta): $stamp**"
+            echo
+            echo "## Build selection"
+            echo
+            echo "- **Selected profile groups:** $category_title"
+            echo "- **OS release group:** $os_group"
+            echo "- **Filesystem target:** $filesystem"
+            echo
+            echo "## Firmware and integrity"
+            echo
+            echo "- Legacy image asset names were normalized to remove redundant profile/variant segments."
+            echo "- One `SHA256SUMS.txt` lists all successfully retained images."
+            echo "- Each image has a `.manifest.txt` file with board, filesystem, OS release, profile, variant, byte size, and SHA-256 digest."
+            echo "- Board: `aml-s9xx-box`; kernel branch: `current`; boot partition request: 256 MiB."
+            echo
+            echo "[Original workflow run](https://github.com/$GH_REPO/actions/runs/${RELEASE_TAG#dbai-armbian-build-})"
+          } > "$notes"
+          gh release edit "$RELEASE_TAG" --title "$title" --notes-file "$notes" --prerelease --latest=false
+          echo "Repaired release: $title ($RELEASE_TAG)"
 
   cleanup_workflow_history:
     if: inputs.cleanup_run_history == true
