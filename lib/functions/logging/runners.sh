@@ -133,7 +133,11 @@ function chroot_sdcard_apt_get() {
 		skip_error_info="yes" run_host_command_logged mount --bind "${LOCAL_APT_CACHE_INFO[HOST_LISTS_DIR]}" "${LOCAL_APT_CACHE_INFO[SDCARD_LISTS_DIR]}"
 	fi
 
-	declare -a extra_envs=("DEBIAN_FRONTEND=noninteractive")
+	# Keep non-interactive package maintainer scripts away from an empty COLUMNS.
+	# Debian Bullseye's rng-tools preinst uses mksh and exits with "COLUMNS: bad number"
+	# when this variable is inherited as an empty string from headless CI/build shells.
+	# Explicit numeric terminal dimensions are harmless for non-interactive apt/dpkg.
+	declare -a extra_envs=("DEBIAN_FRONTEND=noninteractive" "COLUMNS=80" "LINES=24")
 	# shellcheck disable=SC2154 # extra_apt_envs is defined in the caller
 	if [[ "${#extra_apt_envs[@]}" -gt 0 ]]; then
 		extra_envs+=("${extra_apt_envs[@]}")
