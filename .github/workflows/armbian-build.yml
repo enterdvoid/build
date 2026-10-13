@@ -1,6 +1,10 @@
 name: DBAI Armbian Build
 
 on:
+  # TEMPORARY: run one XFCE regression test on workflow-file changes; remove after validation.
+  push:
+    paths:
+      - '.github/workflows/armbian-build.yml'
   workflow_dispatch:
     inputs:
       filesystem:
@@ -124,7 +128,7 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem || 'ext4' }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
@@ -133,7 +137,7 @@ jobs:
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
           ALL_DESKTOPS: ${{ inputs.all_desktops }}
-          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
+          DESKTOP_XFCE: ${{ inputs.desktop_xfce || github.event_name == 'push' }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
           DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
@@ -504,13 +508,8 @@ jobs:
             "COMPRESS_OUTPUTIMAGE=sha,xz"
             "IMAGE_XZ_COMPRESSION_RATIO=0"
             "KERNEL_GIT=shallow"
+            "KERNEL_CONFIGURE=no"
           )
-
-          # Preserve the user's original options: KERNEL_CONFIGURE=no for
-          # server, minimal, and application builds; desktop commands omit it.
-          if [[ "$PROFILE" != "desktop" ]]; then
-            args+=("KERNEL_CONFIGURE=no")
-          fi
           if [[ -n "$EXTENSION" ]]; then
             args+=("ENABLE_EXTENSIONS=${EXTENSION}")
           fi
