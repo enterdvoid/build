@@ -216,7 +216,7 @@ jobs:
               ("i3-wm", "DESKTOP_I3_WM", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("enlightenment", "DESKTOP_ENLIGHTENMENT", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("budgie", "DESKTOP_BUDGIE", {"bookworm", "trixie", "noble"}),
-              ("lxqt", "DESKTOP_LXQT", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
+              ("lxqt", "DESKTOP_LXQT", {"bookworm", "trixie", "forky", "jammy", "noble"}),
           ]
           selected_desktops = [
               (variant, supported_releases)
