@@ -1,10 +1,6 @@
 name: DBAI Armbian Build
 
 on:
-  # TEMPORARY: run one XFCE regression test on workflow-file changes; remove after validation.
-  push:
-    paths:
-      - '.github/workflows/armbian-build.yml'
   workflow_dispatch:
     inputs:
       filesystem:
@@ -128,7 +124,7 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem || 'ext4' }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
@@ -137,7 +133,7 @@ jobs:
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
           ALL_DESKTOPS: ${{ inputs.all_desktops }}
-          DESKTOP_XFCE: ${{ inputs.desktop_xfce || github.event_name == 'push' }}
+          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
           DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
