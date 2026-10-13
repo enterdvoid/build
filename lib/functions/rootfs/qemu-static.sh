@@ -187,7 +187,7 @@ function prepare_host_binfmt_qemu_cross() {
 			prepare_host_binfmt_qemu_cross_arm64_host_armhf_target
 		elif [[ ! -e "/proc/sys/fs/binfmt_misc/qemu-${wanted_arch}" || ! -e "/usr/share/binfmts/qemu-${wanted_arch}" ]]; then
 			display_alert "Updating binfmts" "update-binfmts --enable qemu-${wanted_arch}" "debug"
-			run_host_command_logged update-binfmts --enable "qemu-${wanted_arch}" "&>" "/dev/null" || display_alert "Failed to update binfmts" "update-binfmts --enable qemu-${wanted_arch}" "err" # log & continue on failure
+			run_host_command_logged update-binfmts --enable "qemu-${wanted_arch}" "&>" "/dev/null" || display_alert "Failed to update binfmts" "update-binfmts --enable qemu-${wanted_arch}" "warn" # log & continue on failure
 		fi
 	done
 }
