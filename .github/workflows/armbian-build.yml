@@ -142,7 +142,7 @@ jobs:
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
-          DESKTOP: ${{ inputs.desktop }}
+          DESKTOP: ${{ inputs.desktop || github.event_name == 'push' }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
