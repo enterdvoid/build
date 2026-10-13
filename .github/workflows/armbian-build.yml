@@ -107,6 +107,11 @@ on:
         required: true
         type: boolean
         default: false
+      desktop_lxqt:
+        description: "Desktop: LXQt pada release OS yang kompatibel"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -142,6 +147,7 @@ jobs:
           DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
@@ -196,6 +202,7 @@ jobs:
               ("i3-wm", "DESKTOP_I3_WM", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("enlightenment", "DESKTOP_ENLIGHTENMENT", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("budgie", "DESKTOP_BUDGIE", {"bookworm", "trixie", "noble"}),
+              ("lxqt", "DESKTOP_LXQT", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
           ]
           selected_desktops = [
               (variant, supported_releases)
@@ -294,12 +301,10 @@ jobs:
     permissions:
       contents: write
     outputs:
-      server: ${{ steps.release.outputs.server }}
-      minimal: ${{ steps.release.outputs.minimal }}
-      applications: ${{ steps.release.outputs.applications }}
-      desktop: ${{ steps.release.outputs.desktop }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_title: ${{ steps.release.outputs.release_title }}
     steps:
-      - name: Create category-specific releases
+      - name: Create one release with selected profile title
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -307,128 +312,90 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
-          SERVER: ${{ inputs.server }}
-          MINIMAL: ${{ inputs.minimal }}
-          APPLICATIONS: ${{ inputs.applications }}
-          HOME_ASSISTANT: ${{ inputs.home_assistant }}
-          OPENMEDIAVAULT: ${{ inputs.openmediavault }}
-          KALI: ${{ inputs.kali }}
-          DOCKER_CE: ${{ inputs.docker_ce }}
-          DESKTOP: ${{ inputs.desktop }}
-          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
-          DESKTOP_MATE: ${{ inputs.desktop_mate }}
-          DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
-          DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
-          DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
-          DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
-          DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
-          DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
-          DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
+          MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
         shell: bash
         run: |
           set -euo pipefail
           stamp="$(TZ=Asia/Jakarta date +'%Y-%m-%d_%H-%M')"
-          server=""
-          minimal=""
-          applications=""
-          desktop=""
+          tag="dbai-armbian-build-${RUN_ID}"
 
-          create_category_release() {
-            local category="$1"
-            local display="$2"
-            local tag="dbai-armbian-${category}-${RUN_ID}"
-            local title="DBAI Armbian ${display} Build ${stamp}"
-            local notes_file="release-${category}.md"
-            {
-              echo "# ${title}"
-              echo
-              echo "**Category:** ${display}"
-              echo "**Release generated (Asia/Jakarta): ${stamp}**"
-              echo
-              echo "## Build selection"
-              echo
-              echo "- **OS release group:** ${OS_GROUP_INPUT}"
-              echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
-              case "$category" in
-                server)
-                  echo "- **Image type:** Server"
-                  echo "- **Requested raw image size:** 4096 MiB"
-                  ;;
-                minimal)
-                  echo "- **Image type:** Minimal"
-                  echo "- **Requested raw image size:** 4096 MiB"
-                  ;;
-                applications)
-                  echo "- **Image type:** Applications"
-                  echo "- **Requested raw image size:** 8192 MiB"
-                  if [[ "$APPLICATIONS" == "true" ]]; then
-                    echo "- **Selected variants:** all compatible applications"
-                  else
-                    [[ "$HOME_ASSISTANT" == "true" ]] && echo "- Home Assistant"
-                    [[ "$OPENMEDIAVAULT" == "true" ]] && echo "- OpenMediaVault"
-                    [[ "$KALI" == "true" ]] && echo "- Kali"
-                    [[ "$DOCKER_CE" == "true" ]] && echo "- Docker CE"
-                  fi
-                  ;;
-                desktop)
-                  echo "- **Image type:** Desktop"
-                  echo "- **Requested raw image size:** 8192 MiB"
-                  if [[ "$DESKTOP" == "true" ]]; then
-                    echo "- **Selected variants:** all compatible desktop environments"
-                  else
-                    [[ "$DESKTOP_XFCE" == "true" ]] && echo "- XFCE"
-                    [[ "$DESKTOP_MATE" == "true" ]] && echo "- MATE"
-                    [[ "$DESKTOP_GNOME" == "true" ]] && echo "- GNOME"
-                    [[ "$DESKTOP_CINNAMON" == "true" ]] && echo "- Cinnamon"
-                    [[ "$DESKTOP_KDE_PLASMA" == "true" ]] && echo "- KDE Plasma"
-                    [[ "$DESKTOP_I3_WM" == "true" ]] && echo "- i3-wm"
-                    [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]] && echo "- Enlightenment"
-                    [[ "$DESKTOP_BUDGIE" == "true" ]] && echo "- Budgie"
-                    [[ "$DESKTOP_LXQT" == "true" ]] && echo "- LXQt"
-                  fi
-                  ;;
+          # Derive the title from the actual build matrix so it cannot drift from the jobs.
+          mapfile -t profiles < <(python3 - <<'PY'
+          import json, os
+          matrix = json.loads(os.environ["MATRIX_JSON"])
+          profiles = sorted({row["profile"] for row in matrix.get("include", [])})
+          order = ["server", "minimal", "applications", "desktop"]
+          for name in order:
+              if name in profiles:
+                  print(name)
+          PY
+          )
+          if [[ "${#profiles[@]}" -eq 0 ]]; then
+            echo "::error::No selected profile found in matrix."
+            exit 1
+          fi
+
+          if [[ "${#profiles[@]}" -eq 4 ]]; then
+            category_title="All"
+          else
+            display_profiles=()
+            for profile in "${profiles[@]}"; do
+              case "$profile" in
+                server) display_profiles+=("Server") ;;
+                minimal) display_profiles+=("Minimal") ;;
+                applications) display_profiles+=("Applications") ;;
+                desktop) display_profiles+=("Desktop") ;;
+                *) echo "::error::Unknown profile: $profile"; exit 1 ;;
               esac
-              echo
-              echo "## Common image parameters"
-              echo
-              echo "- **Board:** aml-s9xx-box"
-              echo "- **Kernel branch:** current"
-              echo "- **Boot partition request:** 256 MiB"
-              echo "- **Image compression:** XZ when produced by Armbian Builder"
-              echo
-              echo "## Integrity and availability"
-              echo
-              echo "- Images are uploaded as each successful build completes; this release can grow while the workflow is running."
-              echo "- SHA256SUMS.txt contains the combined SHA-256 checksums for successful images in this category and is finalized after all matrix jobs finish."
-              echo "- Per-image .manifest.txt files describe each asset and include its SHA-256 digest."
-              echo "- Failed or invalid build jobs are not listed in the checksum file."
-              echo "- The requested raw image size is not the compressed download size."
-              echo
-              echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
-            } > "$notes_file"
-
-            if gh release view "$tag" >/dev/null 2>&1; then
-              gh release edit "$tag" --title "$title" --notes-file "$notes_file" --prerelease --latest=false
-            else
-              gh release create "$tag" --title "$title" --notes-file "$notes_file" --prerelease --latest=false
-            fi
-            printf -v "${category}" '%s' "$tag"
-            echo "Prepared release: $title ($tag)"
-          }
-
-          if [[ "$SERVER" == "true" ]]; then create_category_release server Server; fi
-          if [[ "$MINIMAL" == "true" ]]; then create_category_release minimal Minimal; fi
-          if [[ "$APPLICATIONS" == "true" || "$HOME_ASSISTANT" == "true" || "$OPENMEDIAVAULT" == "true" || "$KALI" == "true" || "$DOCKER_CE" == "true" ]]; then
-            create_category_release applications Applications
+            done
+            category_title="$(IFS=' + '; echo "${display_profiles[*]}")"
           fi
-          if [[ "$DESKTOP" == "true" || "$DESKTOP_XFCE" == "true" || "$DESKTOP_MATE" == "true" || "$DESKTOP_GNOME" == "true" || "$DESKTOP_CINNAMON" == "true" || "$DESKTOP_KDE_PLASMA" == "true" || "$DESKTOP_I3_WM" == "true" || "$DESKTOP_ENLIGHTENMENT" == "true" || "$DESKTOP_BUDGIE" == "true" || "$DESKTOP_LXQT" == "true" ]]; then
-            create_category_release desktop Desktop
+          title="DBAI Armbian ${category_title} Build ${stamp}"
+          notes_file="release-notes.md"
+          {
+            echo "# ${title}"
+            echo
+            echo "**Release generated (Asia/Jakarta): ${stamp}**"
+            echo
+            echo "## Build selection"
+            echo
+            echo "- **Selected profile groups:** ${category_title}"
+            echo "- **OS release group:** ${OS_GROUP_INPUT}"
+            echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
+            echo "- **Matrix jobs:** $(python3 -c 'import json,os; print(len(json.loads(os.environ["MATRIX_JSON"]).get("include", [])))')"
+            echo
+            echo "## Image naming"
+            echo
+            echo "Image assets use the format `aml-s9xx-box-{filesystem}-{os-release}-{variant}.img.xz` (or `.img` when not compressed)."
+            echo "Profile names are not repeated when they are already the variant."
+            echo
+            echo "## Common image parameters"
+            echo
+            echo "- **Board:** `aml-s9xx-box`"
+            echo "- **Kernel branch:** `current`"
+            echo "- **Boot partition request:** 256 MiB"
+            echo "- **Compression:** XZ when produced by Armbian Builder"
+            echo
+            echo "## Integrity and availability"
+            echo
+            echo "- Images are uploaded as each successful build completes; this release can grow while the workflow is running."
+            echo "- `SHA256SUMS.txt` contains the combined SHA-256 checksums for successful images and is finalized after all matrix jobs finish."
+            echo "- Per-image `.manifest.txt` files include board, filesystem, OS release, profile, variant, size, and SHA-256 digest."
+            echo "- Failed or invalid build jobs are excluded from the checksum file."
+            echo "- Requested raw image size is not the compressed download size."
+            echo
+            echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
+          } > "$notes_file"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$title" --notes-file "$notes_file" --prerelease --latest=false
+          else
+            gh release create "$tag" --title "$title" --notes-file "$notes_file" --prerelease --latest=false
           fi
 
-          echo "server=$server" >> "$GITHUB_OUTPUT"
-          echo "minimal=$minimal" >> "$GITHUB_OUTPUT"
-          echo "applications=$applications" >> "$GITHUB_OUTPUT"
-          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_title=$title" >> "$GITHUB_OUTPUT"
+          echo "Prepared release: $title ($tag)"
   build:
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
@@ -630,7 +597,7 @@ jobs:
           printf ' %q' "${args[@]}"
           printf '\n'
 
-          ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
+          ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${VARIANT}-${RELEASE}.log"
 
       - name: Prepare image, checksum, and metadata for release
         if: success()
@@ -684,7 +651,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.create_release.outputs[matrix.profile] }}
+          RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
 
@@ -734,36 +701,30 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  finalize_releases:
+  finalize_release:
     needs: [create_release, build]
     if: always() && needs.create_release.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        category: [server, minimal, applications, desktop]
-    name: Finalize ${{ matrix.category }} SHA256SUMS
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: ${{ needs.create_release.outputs[matrix.category] }}
-      CATEGORY: ${{ matrix.category }}
+      RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
     steps:
       - name: Consolidate per-image checksums
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "$RELEASE_TAG" ]]; then
-            echo "No release was created for category '$CATEGORY'; nothing to finalize."
-            exit 0
+            echo "::error::Release tag output is empty."
+            exit 1
           fi
 
           asset_names="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           mapfile -t checksum_assets < <(printf '%s\n' "$asset_names" | grep -E '\.img(\.xz)?\.sha256$' || true)
           if [[ "${#checksum_assets[@]}" -eq 0 ]]; then
-            echo "No successful images/checksums were uploaded for $CATEGORY; no SHA256SUMS file will be published."
+            echo "No successful image checksum assets exist; no SHA256SUMS.txt will be published."
             exit 0
           fi
 
