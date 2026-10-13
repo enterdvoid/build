@@ -492,13 +492,15 @@ jobs:
 
           ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
 
-      - name: Prepare image and checksum for release
+      - name: Prepare image, checksum, and build metadata for release
         if: success()
         env:
           FS: ${{ matrix.filesystem }}
           PROFILE: ${{ matrix.profile }}
           VARIANT: ${{ matrix.variant }}
           RELEASE: ${{ matrix.release }}
+          IMAGE_SIZE: ${{ matrix.image_size }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -516,10 +518,37 @@ jobs:
           fi
 
           asset="aml-s9xx-box-${FS}-${RELEASE}-${PROFILE}-${VARIANT}.${suffix}"
+          log_file="build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
           cp "$image" "dist/$asset"
           sha256sum "dist/$asset" > "dist/${asset}.sha256"
-          ls -lh dist/
 
+          # The Armbian build log records the installed target kernel package/version.
+          kernel_version="$(grep -Eo 'linux-image-current-meson64 = [0-9]+\.[0-9]+\.[0-9]+' "$log_file" 2>/dev/null | tail -n 1 | awk '{print $3}' || true)"
+          if [[ -z "$kernel_version" ]]; then
+            kernel_version="$(grep -Eo 'linux-image[^[:space:]]+_[^[:space:]]*' "$log_file" 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | tail -n 1 || true)"
+          fi
+          kernel_version="${kernel_version:-unknown; see build log}"
+          image_bytes="$(stat -c '%s' "dist/$asset")"
+          image_sha256="$(awk '{print $1}' "dist/${asset}.sha256")"
+          cat > "dist/${asset}.build-info.txt" <<EOF
+DBAI Armbian Build — per-image metadata
+Board: aml-s9xx-box
+Filesystem: ${FS}
+Profile: ${PROFILE}
+Variant: ${VARIANT}
+Distribution release: ${RELEASE}
+Kernel branch configured: current
+Kernel version detected from build log: ${kernel_version}
+Requested raw image target size: ${IMAGE_SIZE} MiB
+Image asset: ${asset}
+Compressed image size bytes: ${image_bytes}
+Compressed image size: $(du -h "dist/$asset" | awk '{print $1}')
+SHA-256: ${image_sha256}
+Source commit: ${SOURCE_SHA}
+Build log: ${log_file}
+Metadata generated (UTC): $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+EOF
+          ls -lh dist/
       - name: Upload image and checksum to GitHub Release
         if: success()
         env:
@@ -626,6 +655,7 @@ jobs:
           gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" > run-jobs-pages.json
           mkdir -p checksums
           gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksums >/dev/null 2>&1 || true
+          gh release download "$RELEASE_TAG" --pattern '*.build-info.txt' --dir checksums >/dev/null 2>&1 || true
           python3 - <<'PY' > final-notes.md
           import json, os
           from pathlib import Path
@@ -653,6 +683,15 @@ jobs:
                   checksum_map[checksum_file.name[:-7]] = first
               except Exception:
                   pass
+          info_map = {}
+          for info_file in Path('checksums').glob('*.build-info.txt'):
+              fields = {}
+              for line in info_file.read_text(encoding='utf-8', errors='replace').splitlines():
+                  if ':' in line:
+                      key, value = line.split(':', 1)
+                      fields[key.strip()] = value.strip()
+              image_name = info_file.name[:-len('.build-info.txt')]
+              info_map[image_name] = fields
           images = [a for a in assets if str(a.get('name', '')).endswith('.img') or str(a.get('name', '')).endswith('.img.xz')]
           images.sort(key=lambda a: a.get('name', '').lower())
           def human_size(num):
@@ -673,14 +712,17 @@ jobs:
               out.append('- No matrix job records were returned by the GitHub Actions API.')
           out += ['', '### Published firmware images', '']
           if images:
-              out += ['| Firmware asset | Compressed size | SHA-256 |', '|---|---:|---|']
+              out += ['| Firmware asset | Filesystem / profile / variant | Kernel version | Compressed size | SHA-256 |', '|---|---|---|---:|---|']
               for asset in images:
                   name = asset.get('name', '')
                   size = human_size(asset.get('size', 0))
                   url = asset.get('downloadUrl') or asset.get('url')
                   label = f'[{name}]({url})' if url else f'`{name}`'
+                  info = info_map.get(name, {})
+                  dimensions = ' / '.join(x for x in [info.get('Filesystem'), info.get('Profile'), info.get('Variant'), info.get('Distribution release')] if x) or 'encoded in asset name'
+                  kernel = info.get('Kernel version detected from build log', 'see build log')
                   checksum = checksum_map.get(name, 'see matching `.sha256` asset')
-                  out.append(f'| {label} | {size} | `{checksum}` |')
+                  out.append(f'| {label} | {dimensions} | `{kernel}` | {size} | `{checksum}` |')
           else:
               out.append('No firmware image assets were uploaded to this Release. Check the job status and Actions logs.')
           out += ['', '### Other Release assets', '']
