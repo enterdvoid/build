@@ -223,26 +223,100 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Create release
+      - name: Create descriptive release
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
+          SERVER: ${{ inputs.server }}
+          MINIMAL: ${{ inputs.minimal }}
+          HOME_ASSISTANT: ${{ inputs.home_assistant }}
+          OPENMEDIAVAULT: ${{ inputs.openmediavault }}
+          KALI: ${{ inputs.kali }}
+          DOCKER_CE: ${{ inputs.docker_ce }}
+          ALL_DESKTOPS: ${{ inputs.all_desktops }}
+          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
+          DESKTOP_MATE: ${{ inputs.desktop_mate }}
+          DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
+          DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
+          DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
+          DESKTOP_KDE_NEON: ${{ inputs.desktop_kde_neon }}
+          DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
+          DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
+          DESKTOP_XMONAD: ${{ inputs.desktop_xmonad }}
+          DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
+        shell: bash
         run: |
+          set -euo pipefail
+          stamp="$(TZ=Asia/Jakarta date -d "$RUN_STARTED_AT" +'%Y-%m-%d_%H-%M')"
           tag="dbai-armbian-build-${RUN_ID}"
+          release_title="DBAI Armbian Build ${stamp}"
+          notes_file="release-summary.md"
+          {
+            echo '# DBAI Armbian Build'
+            echo
+            echo "**Workflow started (Asia/Jakarta): ${stamp}**"
+            echo
+            echo '## Build selection'
+            echo
+            echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
+            if [[ "$ALL_BUILD_TYPES" == "true" ]]; then
+              echo '- **Server:** all configured releases (Bookworm, Trixie, Forky, Jammy, Noble, Resolute)'
+              echo '- **Minimal:** all configured releases (Bookworm, Trixie, Forky, Jammy, Noble, Resolute)'
+              echo '- **Applications:** Home Assistant, OpenMediaVault, Kali, Docker CE (Trixie)'
+              echo '- **Desktop:** all 11 desktop environments (Trixie)'
+            else
+              if [[ "$SERVER" == "true" ]]; then echo '- **Server:** Bookworm, Trixie, Forky, Jammy, Noble, Resolute'; fi
+              if [[ "$MINIMAL" == "true" ]]; then echo '- **Minimal:** Bookworm, Trixie, Forky, Jammy, Noble, Resolute'; fi
+              if [[ "$HOME_ASSISTANT" == "true" ]]; then echo '- **Application:** Home Assistant (Trixie)'; fi
+              if [[ "$OPENMEDIAVAULT" == "true" ]]; then echo '- **Application:** OpenMediaVault (Trixie)'; fi
+              if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali (Trixie)'; fi
+              if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE (Trixie)'; fi
+              if [[ "$ALL_DESKTOPS" == "true" ]]; then
+                echo '- **Desktop:** all 11 desktop environments (Trixie)'
+              else
+                if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE (Trixie)'; fi
+                if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE (Trixie)'; fi
+                if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME (Trixie)'; fi
+                if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon (Trixie)'; fi
+                if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma (Trixie)'; fi
+                if [[ "$DESKTOP_KDE_NEON" == "true" ]]; then echo '- **Desktop:** KDE Neon (Trixie)'; fi
+                if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm (Trixie)'; fi
+                if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment (Trixie)'; fi
+                if [[ "$DESKTOP_XMONAD" == "true" ]]; then echo '- **Desktop:** Xmonad (Trixie)'; fi
+                if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie (Trixie)'; fi
+                if [[ "$DESKTOP_DEEPIN" == "true" ]]; then echo '- **Desktop:** Deepin (Trixie)'; fi
+              fi
+            fi
+            echo
+            echo '## Common image parameters'
+            echo
+            echo '- **Board:** `aml-s9xx-box`'
+            echo '- **Kernel branch:** `current`'
+            echo '- **Boot partition request:** 256 MiB'
+            echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB'
+            echo '- **Image output:** compressed XZ when produced by Armbian Builder, with SHA-256 checksum'
+            echo
+            echo '## Notes'
+            echo
+            echo '- This section documents the selected build matrix. Only successful jobs upload image and checksum assets.'
+            echo '- Requested raw image size is not the compressed download file size.'
+            echo '- Actual image filenames and compressed sizes are shown in the Release assets list.'
+            echo
+            echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
+          } > "$notes_file"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists; reusing it."
+            gh release edit "$tag" --title "$release_title" --notes-file "$notes_file" --prerelease --latest=false
           else
-            gh release create "$tag" \
-              --title "DBAI Armbian Build #${RUN_NUMBER}" \
-              --notes "Automated DBAI Armbian build batch. Assets are named by filesystem, profile, variant, and release." \
-              --prerelease \
-              --latest=false
+            gh release create "$tag" --title "$release_title" --notes-file "$notes_file" --prerelease --latest=false
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
   build:
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
