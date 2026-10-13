@@ -4,106 +4,121 @@ on:
   workflow_dispatch:
     inputs:
       filesystem:
-        description: "Filesystem target"
+        description: "Filesystem untuk semua image yang dipilih"
         required: true
         type: choice
-        default: ext4
+        default: both
         options:
+          - both
           - ext4
           - btrfs
-          - both
+      os_group:
+        description: "Kelompok OS: semua, Debian, Ubuntu, atau fokus Trixie"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - debian
+          - ubuntu
+          - trixie
       all_build_types:
-        description: "Build semua tipe firmware (mengabaikan checkbox lainnya)"
+        description: "Build semua profil pada semua OS terpilih (mengabaikan checkbox profil lainnya)"
         required: true
         type: boolean
         default: false
       server:
-        description: "Server: semua 6 release"
+        description: "Server: semua release dalam kelompok OS terpilih"
         required: true
         type: boolean
         default: false
       minimal:
-        description: "Minimal: semua 6 release"
+        description: "Minimal: semua release dalam kelompok OS terpilih"
+        required: true
+        type: boolean
+        default: false
+      applications:
+        description: "Applications: semua aplikasi pada OS yang kompatibel"
         required: true
         type: boolean
         default: false
       home_assistant:
-        description: "Applications: Home Assistant (Trixie)"
+        description: "Application: Home Assistant (Bookworm/Trixie)"
         required: true
         type: boolean
         default: false
       openmediavault:
-        description: "Applications: OpenMediaVault (Trixie)"
+        description: "Application: OpenMediaVault (Bookworm/Trixie)"
         required: true
         type: boolean
         default: false
       kali:
-        description: "Applications: Kali (Trixie)"
+        description: "Application: Kali (Debian: Bookworm/Trixie/Forky)"
         required: true
         type: boolean
         default: false
       docker_ce:
-        description: "Applications: Docker CE (Trixie)"
+        description: "Application: Docker CE (Bookworm/Trixie/Jammy/Noble/Resolute)"
         required: true
         type: boolean
         default: false
       all_desktops:
-        description: "Build semua 11 desktop environment (Trixie)"
+        description: "Desktop: semua 11 environment pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_xfce:
-        description: "Desktop: XFCE (Trixie)"
+        description: "Desktop: XFCE pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_mate:
-        description: "Desktop: MATE (Trixie)"
+        description: "Desktop: MATE pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_gnome:
-        description: "Desktop: GNOME (Trixie)"
+        description: "Desktop: GNOME pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_cinnamon:
-        description: "Desktop: Cinnamon (Trixie)"
+        description: "Desktop: Cinnamon pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_kde_plasma:
-        description: "Desktop: KDE Plasma (Trixie)"
+        description: "Desktop: KDE Plasma pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_kde_neon:
-        description: "Desktop: KDE Neon (Trixie)"
+        description: "Desktop: KDE Neon pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_i3_wm:
-        description: "Desktop: i3-wm (Trixie)"
+        description: "Desktop: i3-wm pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_enlightenment:
-        description: "Desktop: Enlightenment (Trixie)"
+        description: "Desktop: Enlightenment pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_xmonad:
-        description: "Desktop: Xmonad (Trixie)"
+        description: "Desktop: Xmonad pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_budgie:
-        description: "Desktop: Budgie (Trixie)"
+        description: "Desktop: Budgie pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
       desktop_deepin:
-        description: "Desktop: Deepin (Trixie)"
+        description: "Desktop: Deepin pada setiap OS terpilih"
         required: true
         type: boolean
         default: false
@@ -125,9 +140,11 @@ jobs:
         id: matrix
         env:
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
+          APPLICATIONS: ${{ inputs.applications }}
           HOME_ASSISTANT: ${{ inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
@@ -148,21 +165,43 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
 
-          releases = ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"]
-          filesystems = ["ext4", "btrfs"] if os.environ["FILESYSTEM_INPUT"] == "both" else [os.environ["FILESYSTEM_INPUT"]]
+          release_groups = {
+              "all": ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"],
+              "debian": ["bookworm", "trixie", "forky"],
+              "ubuntu": ["jammy", "noble", "resolute"],
+              "trixie": ["trixie"],
+          }
+          release_group = os.environ.get("OS_GROUP_INPUT", "all").lower()
+          if release_group not in release_groups:
+              raise SystemExit(f"Unknown OS group: {release_group}")
+          releases = release_groups[release_group]
+
+          filesystem_input = os.environ.get("FILESYSTEM_INPUT", "both").lower()
+          filesystems = ["ext4", "btrfs"] if filesystem_input == "both" else [filesystem_input]
+          if any(fs not in ("ext4", "btrfs") for fs in filesystems):
+              raise SystemExit(f"Invalid filesystem selection: {filesystem_input}")
+
           truthy = lambda name: os.environ.get(name, "false").lower() == "true"
           all_types = truthy("ALL_BUILD_TYPES")
-
           selected = {
               "server": all_types or truthy("SERVER"),
               "minimal": all_types or truthy("MINIMAL"),
           }
+
+          # App support is explicit so an "all applications" run only creates compatible combinations.
           app_variants = [
-              ("home-assistant", "applications-ha", "HOME_ASSISTANT"),
-              ("openmediavault", "applications-omv", "OPENMEDIAVAULT"),
-              ("kali", "applications-kali", "KALI"),
-              ("docker-ce", "docker-ce", "DOCKER_CE"),
+              ("home-assistant", "applications-ha", "HOME_ASSISTANT", {"bookworm", "trixie"}),
+              ("openmediavault", "applications-omv", "OPENMEDIAVAULT", {"bookworm", "trixie"}),
+              ("kali", "applications-kali", "KALI", {"bookworm", "trixie", "forky"}),
+              ("docker-ce", "docker-ce", "DOCKER_CE", {"bookworm", "trixie", "jammy", "noble", "resolute"}),
           ]
+          select_all_apps = all_types or truthy("APPLICATIONS")
+          selected_apps = [
+              (variant, extension, supported_releases)
+              for variant, extension, key, supported_releases in app_variants
+              if select_all_apps or truthy(key)
+          ]
+
           desktop_variants = [
               ("xfce", "DESKTOP_XFCE"), ("mate", "DESKTOP_MATE"),
               ("gnome", "DESKTOP_GNOME"), ("cinnamon", "DESKTOP_CINNAMON"),
@@ -171,8 +210,10 @@ jobs:
               ("xmonad", "DESKTOP_XMONAD"), ("budgie", "DESKTOP_BUDGIE"),
               ("deepin", "DESKTOP_DEEPIN"),
           ]
-          selected_apps = [(v, e) for v, e, key in app_variants if all_types or truthy(key)]
-          selected_desktops = [v for v, key in desktop_variants if all_types or truthy("ALL_DESKTOPS") or truthy(key)]
+          selected_desktops = [
+              variant for variant, key in desktop_variants
+              if all_types or truthy("ALL_DESKTOPS") or truthy(key)
+          ]
 
           matrix = []
           for fs in filesystems:
@@ -183,36 +224,48 @@ jobs:
                       matrix.append({
                           "filesystem": fs, "profile": profile, "variant": profile,
                           "release": release, "image_size": 4096,
-                          "build_desktop": "no", "build_minimal": "yes" if profile == "minimal" else "no",
+                          "build_desktop": "no",
+                          "build_minimal": "yes" if profile == "minimal" else "no",
                           "extension": "", "desktop_env": ""
                       })
-              for variant, extension in selected_apps:
-                  matrix.append({
-                      "filesystem": fs, "profile": "applications", "variant": variant,
-                      "release": "trixie", "image_size": 8192,
-                      "build_desktop": "no", "build_minimal": "no",
-                      "extension": extension, "desktop_env": ""
-                  })
+
+              for variant, extension, supported_releases in selected_apps:
+                  for release in releases:
+                      if release not in supported_releases:
+                          continue
+                      matrix.append({
+                          "filesystem": fs, "profile": "applications", "variant": variant,
+                          "release": release, "image_size": 8192,
+                          "build_desktop": "no", "build_minimal": "no",
+                          "extension": extension, "desktop_env": ""
+                      })
+
               for desktop in selected_desktops:
-                  matrix.append({
-                      "filesystem": fs, "profile": "desktop", "variant": desktop,
-                      "release": "trixie", "image_size": 8192,
-                      "build_desktop": "yes", "build_minimal": "no",
-                      "extension": "", "desktop_env": desktop
-                  })
+                  for release in releases:
+                      matrix.append({
+                          "filesystem": fs, "profile": "desktop", "variant": desktop,
+                          "release": release, "image_size": 8192,
+                          "build_desktop": "yes", "build_minimal": "no",
+                          "extension": "", "desktop_env": desktop
+                      })
 
           if not matrix:
-              raise SystemExit("Tidak ada build yang dipilih. Centang minimal satu tipe build atau 'Build semua tipe firmware'.")
+              raise SystemExit("Tidak ada build yang dipilih. Pilih satu atau beberapa profil image.")
+          if len(matrix) > 256:
+              raise SystemExit(f"Matriks menghasilkan {len(matrix)} job; batas GitHub Actions adalah 256.")
+          print(f"Generated {len(matrix)} build jobs for OS group '{release_group}' and filesystem(s): {', '.join(filesystems)}")
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
           print("count=" + str(len(matrix)))
           PY
       - name: Show selected matrix
         env:
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
         run: |
-          echo "Filesystem: $FILESYSTEM_INPUT"
-          echo "Build all types: $ALL_BUILD_TYPES"
+          echo "Filesystem(s): $FILESYSTEM_INPUT"
+          echo "OS release group: $OS_GROUP_INPUT"
+          echo "Build all profiles: $ALL_BUILD_TYPES"
           echo "Build matrix generated."
 
   create_release:
@@ -232,9 +285,11 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
           RUN_STARTED_AT: ${{ github.run_started_at }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          OS_GROUP_INPUT: ${{ inputs.os_group }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
+          APPLICATIONS: ${{ inputs.applications }}
           HOME_ASSISTANT: ${{ inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
@@ -265,35 +320,40 @@ jobs:
             echo
             echo '## Build selection'
             echo
+            echo "- **OS release group:** ${OS_GROUP_INPUT}"
             echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
             if [[ "$ALL_BUILD_TYPES" == "true" ]]; then
-              echo '- **Server:** all configured releases (Bookworm, Trixie, Forky, Jammy, Noble, Resolute)'
-              echo '- **Minimal:** all configured releases (Bookworm, Trixie, Forky, Jammy, Noble, Resolute)'
-              echo '- **Applications:** Home Assistant, OpenMediaVault, Kali, Docker CE (Trixie)'
-              echo '- **Desktop:** all 11 desktop environments (Trixie)'
+              echo '- **Profiles:** Server and Minimal on every selected OS release; all compatible application variants; all 11 desktop environments on every selected OS release.'
             else
-              if [[ "$SERVER" == "true" ]]; then echo '- **Server:** Bookworm, Trixie, Forky, Jammy, Noble, Resolute'; fi
-              if [[ "$MINIMAL" == "true" ]]; then echo '- **Minimal:** Bookworm, Trixie, Forky, Jammy, Noble, Resolute'; fi
-              if [[ "$HOME_ASSISTANT" == "true" ]]; then echo '- **Application:** Home Assistant (Trixie)'; fi
-              if [[ "$OPENMEDIAVAULT" == "true" ]]; then echo '- **Application:** OpenMediaVault (Trixie)'; fi
-              if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali (Trixie)'; fi
-              if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE (Trixie)'; fi
+              if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
+              if [[ "$MINIMAL" == "true" ]]; then echo '- **Profile:** Minimal on every selected OS release'; fi
+              if [[ "$APPLICATIONS" == "true" ]]; then echo '- **Profile:** all compatible Applications variants'; fi
+              if [[ "$HOME_ASSISTANT" == "true" ]]; then echo '- **Application:** Home Assistant on supported releases'; fi
+              if [[ "$OPENMEDIAVAULT" == "true" ]]; then echo '- **Application:** OpenMediaVault on supported releases'; fi
+              if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali on Debian releases'; fi
+              if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE on supported Debian/Ubuntu releases'; fi
               if [[ "$ALL_DESKTOPS" == "true" ]]; then
-                echo '- **Desktop:** all 11 desktop environments (Trixie)'
+                echo '- **Profile:** all 11 desktop environments on every selected OS release'
               else
-                if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE (Trixie)'; fi
-                if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE (Trixie)'; fi
-                if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME (Trixie)'; fi
-                if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon (Trixie)'; fi
-                if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma (Trixie)'; fi
-                if [[ "$DESKTOP_KDE_NEON" == "true" ]]; then echo '- **Desktop:** KDE Neon (Trixie)'; fi
-                if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm (Trixie)'; fi
-                if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment (Trixie)'; fi
-                if [[ "$DESKTOP_XMONAD" == "true" ]]; then echo '- **Desktop:** Xmonad (Trixie)'; fi
-                if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie (Trixie)'; fi
-                if [[ "$DESKTOP_DEEPIN" == "true" ]]; then echo '- **Desktop:** Deepin (Trixie)'; fi
+                if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on every selected OS release'; fi
+                if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on every selected OS release'; fi
+                if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on every selected OS release'; fi
+                if [[ "$DESKTOP_CINNAMON" == "true" ]]; then echo '- **Desktop:** Cinnamon on every selected OS release'; fi
+                if [[ "$DESKTOP_KDE_PLASMA" == "true" ]]; then echo '- **Desktop:** KDE Plasma on every selected OS release'; fi
+                if [[ "$DESKTOP_KDE_NEON" == "true" ]]; then echo '- **Desktop:** KDE Neon on every selected OS release'; fi
+                if [[ "$DESKTOP_I3_WM" == "true" ]]; then echo '- **Desktop:** i3-wm on every selected OS release'; fi
+                if [[ "$DESKTOP_ENLIGHTENMENT" == "true" ]]; then echo '- **Desktop:** Enlightenment on every selected OS release'; fi
+                if [[ "$DESKTOP_XMONAD" == "true" ]]; then echo '- **Desktop:** Xmonad on every selected OS release'; fi
+                if [[ "$DESKTOP_BUDGIE" == "true" ]]; then echo '- **Desktop:** Budgie on every selected OS release'; fi
+                if [[ "$DESKTOP_DEEPIN" == "true" ]]; then echo '- **Desktop:** Deepin on every selected OS release'; fi
               fi
             fi
+            echo
+            echo '## Application compatibility'
+            echo
+            echo '- Home Assistant and OpenMediaVault: Debian Bookworm/Trixie.'
+            echo '- Kali: Debian Bookworm/Trixie/Forky only.'
+            echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
             echo
             echo '## Common image parameters'
             echo
