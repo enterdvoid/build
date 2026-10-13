@@ -266,20 +266,91 @@ jobs:
           remove-codeql: "true"
           remove-docker-images: "true"
 
-      - name: Show runner resources
-        run: |
-          echo "=== Disk ==="
-          df -h /
-          df -h "$GITHUB_WORKSPACE"
-          echo "=== Memory ==="
-          free -h
-          echo "=== Docker ==="
-          docker system df || true
-
       - name: Checkout Armbian builder and local customizations
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # maximize-build-space gives the workspace a large dedicated volume, but
+      # Docker normally stores layers under /var/lib/docker on the nearly-full root.
+      # Move Docker's fresh data root onto the workspace volume before pulling/building.
+      - name: Move Docker storage to large build volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker_root="$GITHUB_WORKSPACE/.docker-data"
+          echo "Docker data root will be: $docker_root"
+          sudo systemctl stop docker.socket docker.service || true
+          sudo mkdir -p "$docker_root"
+          sudo chown root:root "$docker_root"
+          sudo python3 - "$docker_root" <<'PY'
+          import json, os, sys
+          path = "/etc/docker/daemon.json"
+          try:
+              with open(path, encoding="utf-8") as f:
+                  config = json.load(f)
+          except FileNotFoundError:
+              config = {}
+          config["data-root"] = sys.argv[1]
+          tmp = path + ".tmp"
+          with open(tmp, "w", encoding="utf-8") as f:
+              json.dump(config, f, indent=2)
+              f.write("\n")
+          os.replace(tmp, path)
+          PY
+          sudo systemctl start docker
+          for i in {1..30}; do
+            if docker info >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          actual_root="$(docker info --format '{{.DockerRootDir}}')"
+          echo "DockerRootDir=$actual_root"
+          [[ "$actual_root" == "$docker_root" ]] || {
+            echo "::error::Docker did not switch to the large workspace volume."
+            exit 1
+          }
+          df -h "$GITHUB_WORKSPACE"
+
+      - name: Show runner specs and selected build configuration
+        env:
+          FS: ${{ matrix.filesystem }}
+          PROFILE: ${{ matrix.profile }}
+          VARIANT: ${{ matrix.variant }}
+          RELEASE: ${{ matrix.release }}
+          IMAGE_SIZE: ${{ matrix.image_size }}
+          BUILD_DESKTOP: ${{ matrix.build_desktop }}
+          BUILD_MINIMAL: ${{ matrix.build_minimal }}
+          EXTENSION: ${{ matrix.extension }}
+          DESKTOP_ENV: ${{ matrix.desktop_env }}
+        run: |
+          echo "========== DBAI ARMBIAN BUILD: PRE-BUILD REPORT =========="
+          echo "=== Selected build ==="
+          echo "Board: aml-s9xx-box"
+          echo "Filesystem: $FS"
+          echo "Profile / variant: $PROFILE / $VARIANT"
+          echo "Release: $RELEASE"
+          echo "Image size: ${IMAGE_SIZE} MiB"
+          echo "BUILD_DESKTOP=$BUILD_DESKTOP"
+          echo "BUILD_MINIMAL=$BUILD_MINIMAL"
+          echo "Extension: ${EXTENSION:-none}"
+          echo "Desktop environment: ${DESKTOP_ENV:-none}"
+          echo "=== Runner OS ==="
+          cat /etc/os-release | grep -E '^(PRETTY_NAME|VERSION_ID)=' || true
+          uname -a
+          echo "=== CPU ==="
+          lscpu | grep -E '^(Architecture|CPU\(s\)|Model name|CPU MHz|Thread|Core|Socket|Virtualization):' || true
+          echo "=== RAM and swap ==="
+          free -h
+          swapon --show || true
+          echo "=== Disk space ==="
+          df -h /
+          df -h "$GITHUB_WORKSPACE"
+          df -ih /
+          echo "=== Docker ==="
+          docker --version
+          docker info --format 'Docker root: {{.DockerRootDir}} | Storage driver: {{.Driver}}' || true
+          docker system df || true
+          echo "=========================================================="
 
       - name: Check custom board configuration
         run: |
