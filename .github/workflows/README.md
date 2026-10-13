@@ -65,3 +65,31 @@ jobs:
     steps:
       - uses: hmarr/debug-action@v2
 ```
+
+## DBAI Armbian Build matrix
+
+Workflow khusus fork ini: [`.github/workflows/armbian-build.yml`](./armbian-build.yml). Jalankan dari **Actions → DBAI Armbian Build → Run workflow**.
+
+### Pilihan utama
+
+- **Filesystem** — default `both`, menghasilkan ext4 dan Btrfs untuk setiap kombinasi yang dipilih.
+- **OS release group** — `all` (Bookworm, Trixie, Forky, Jammy, Noble, Resolute), `debian`, `ubuntu`, atau `trixie`.
+- **FULL BUILD** — default aktif. Mengabaikan checkbox profil lain dan memilih Server, Minimal, semua aplikasi yang kompatibel, serta semua desktop yang aktif dan kompatibel dengan OS terpilih.
+- Untuk build sebagian, matikan **FULL BUILD**, lalu centang profil/aplikasi/desktop yang dibutuhkan. Server dan Minimal menghasilkan image untuk setiap release dalam kelompok OS terpilih.
+
+### Cakupan kompatibilitas
+
+- Server dan Minimal: semua release yang terdaftar dalam kelompok OS.
+- Home Assistant dan OpenMediaVault: Debian Bookworm/Trixie.
+- Kali: Debian Bookworm/Trixie/Forky.
+- Docker CE: Debian Bookworm/Trixie dan Ubuntu Jammy/Noble/Resolute.
+- Desktop aktif: XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, dan Enlightenment pada semua release terdaftar; Budgie pada Bookworm, Trixie, dan Noble.
+- KDE Neon, Xmonad, dan Deepin tidak dimasukkan ke matriks karena saat ini ditandai tidak didukung/nonaktif oleh konfigurasi desktop Armbian yang dipakai.
+
+Kombinasi aplikasi sengaja dibatasi sesuai dukungan extension-nya. Karena itu, **all** berarti semua profil yang kompatibel untuk setiap OS, bukan memaksakan aplikasi ke release yang tidak didukung.
+
+### Ukuran full build
+
+Dengan default `OS release group=all`, `Filesystem=both`, dan `FULL BUILD=on`, matriks menghitung **138 job**: 69 kombinasi per filesystem × dua filesystem. Untuk setiap job, Actions membangun image dan checksum SHA-256, lalu mengunggahnya ke Release jika build sukses. Nama asset memuat filesystem, release OS, profil, dan varian agar hasilnya mudah dibedakan.
+
+Workflow menjalankan maksimal dua job build sekaligus dan tiap job memiliki timeout enam jam. Full build dapat memerlukan waktu lama; gunakan kelompok OS atau subset profil untuk test yang lebih cepat.
