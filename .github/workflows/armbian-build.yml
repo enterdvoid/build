@@ -265,6 +265,27 @@ jobs:
                           "extension": "", "desktop_env": desktop
                       })
 
+          # Interleave filesystem/profile queues instead of scheduling all ext4 jobs before btrfs.
+          # This brings long-running Desktop jobs into the queue earlier and balances runner utilization.
+          bucket_order = [
+              (fs, profile)
+              for profile in ("server", "minimal", "applications", "desktop")
+              for fs in filesystems
+          ]
+          matrix_queues = {
+              key: [
+                  row for row in matrix
+                  if row["filesystem"] == key[0] and row["profile"] == key[1]
+              ]
+              for key in bucket_order
+          }
+          interleaved_matrix = []
+          while any(matrix_queues.values()):
+              for key in bucket_order:
+                  if matrix_queues[key]:
+                      interleaved_matrix.append(matrix_queues[key].pop(0))
+          matrix = interleaved_matrix
+
           full_matrix_count = len(matrix)
           print(f"Full selected matrix: {full_matrix_count} jobs for OS group '{release_group}' and filesystem(s): {', '.join(filesystems)}", file=sys.stderr)
           if not matrix:
@@ -527,7 +548,8 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
-      max-parallel: 2
+      # Four independent GitHub-hosted runners balance throughput with per-job disk and I/O demand.
+      max-parallel: 4
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     name: ${{ matrix.filesystem }} / ${{ matrix.profile }} / ${{ matrix.variant }} / ${{ matrix.release }}
     steps:
