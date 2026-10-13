@@ -826,7 +826,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ needs.create_release.outputs.release_tag }}
     steps:
-      - name: Consolidate per-image checksums
+      - name: Consolidate per-image checksums (supports reruns)
         shell: bash
         run: |
           set -euo pipefail
@@ -834,32 +834,70 @@ jobs:
             echo "::error::Release tag output is empty."
             exit 1
           fi
+
           asset_names="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           mapfile -t checksum_assets < <(printf '%s\n' "$asset_names" | grep -E '\.img(\.xz)?\.sha256$' || true)
-          if [[ "${#checksum_assets[@]}" -eq 0 ]]; then
-            echo "No successful image checksum assets exist; no SHA256SUMS.txt will be published."
+
+          mkdir -p checksum-input
+          # Preserve a previous consolidated list when a failed job is rerun later.
+          if gh release download "$RELEASE_TAG" --pattern 'SHA256SUMS.txt' --dir checksum-input; then
+            mv checksum-input/SHA256SUMS.txt checksum-input/existing-SHA256SUMS.txt
+          fi
+
+          # Download current per-image sidecars if any. These take precedence over older sums.
+          if [[ "${#checksum_assets[@]}" -gt 0 ]]; then
+            gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input
+          fi
+
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          root = pathlib.Path("checksum-input")
+          checksums = {}
+          digest_re = re.compile(r"^[0-9a-fA-F]{64}$")
+
+          def read_sum_file(path):
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  parts = line.strip().split(maxsplit=1)
+                  if len(parts) != 2:
+                      continue
+                  digest, filename = parts
+                  filename = filename.lstrip("*")
+                  filename = pathlib.PurePosixPath(filename).name
+                  if digest_re.fullmatch(digest) and filename:
+                      checksums[filename] = digest.lower()
+
+          existing = root / "existing-SHA256SUMS.txt"
+          if existing.is_file():
+              read_sum_file(existing)
+
+          for sidecar in sorted(root.glob("*.sha256")):
+              read_sum_file(sidecar)
+
+          if not checksums:
+              print("No successful image checksum assets exist; no SHA256SUMS.txt will be published.")
+          else:
+              with open("SHA256SUMS.txt", "w", encoding="utf-8", newline="\n") as output:
+                  for filename in sorted(checksums):
+                      output.write(f"{checksums[filename]}  {filename}\n")
+              print(f"Prepared {len(checksums)} checksum entries.")
+          PY
+
+          if [[ ! -s SHA256SUMS.txt ]]; then
+            echo "No checksum entries to publish; leaving the release unchanged."
             exit 0
           fi
-          mkdir -p checksum-input
-          gh release download "$RELEASE_TAG" --pattern '*.sha256' --dir checksum-input
-          {
-            for checksum in checksum-input/*.sha256; do
-              [[ -f "$checksum" ]] || continue
-              cat "$checksum"
-            done
-          } | sort -k2,2 > SHA256SUMS.txt
-          if [[ ! -s SHA256SUMS.txt ]]; then
-            echo "::error::Checksum assets were found, but the combined checksum file is empty."
-            exit 1
-          fi
+
           echo "Combined checksums:"
           cat SHA256SUMS.txt
           gh release upload "$RELEASE_TAG" SHA256SUMS.txt --clobber
-          # Delete sidecars only after the consolidated file uploads successfully.
+
+          # Remove individual sidecars only after the combined file uploads successfully.
           for asset in "${checksum_assets[@]}"; do
             gh release delete-asset "$RELEASE_TAG" "$asset" --yes
           done
-          echo "Published SHA256SUMS.txt and removed ${#checksum_assets[@]} individual checksum assets."
+          echo "Published SHA256SUMS.txt; removed ${#checksum_assets[@]} current sidecars."
 
   cleanup_workflow_history:
     if: inputs.cleanup_run_history == true
