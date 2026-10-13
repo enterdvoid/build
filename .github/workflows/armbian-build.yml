@@ -21,6 +21,7 @@ on:
           - all
           - debian
           - ubuntu
+          - bullseye
           - bookworm
           - trixie
           - forky
@@ -167,9 +168,10 @@ jobs:
           import json, os, sys
 
           release_groups = {
-              "all": ["bookworm", "trixie", "forky", "jammy", "noble", "resolute"],
-              "debian": ["bookworm", "trixie", "forky"],
+              "all": ["bullseye", "bookworm", "trixie", "forky", "jammy", "noble", "resolute"],
+              "debian": ["bullseye", "bookworm", "trixie", "forky"],
               "ubuntu": ["jammy", "noble", "resolute"],
+              "bullseye": ["bullseye"],
               "bookworm": ["bookworm"],
               "trixie": ["trixie"],
               "forky": ["forky"],
@@ -284,7 +286,7 @@ jobs:
               and select_all_apps
               and truthy("DESKTOP")
           ):
-              expected_default_jobs = 148
+              expected_default_jobs = 152
               if len(matrix) != expected_default_jobs:
                   raise SystemExit(
                       f"Default full matrix changed unexpectedly: expected {expected_default_jobs} jobs, got {len(matrix)}."
@@ -380,7 +382,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-          RUN_STARTED_AT: ${{ github.run_started_at }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
           MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
@@ -404,7 +405,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stamp="$(TZ=Asia/Jakarta date -d "$RUN_STARTED_AT" +'%Y-%m-%d_%H-%M')"
+          run_started_at="$(gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}" --jq '.run_started_at // .created_at')"
+          if [[ -z "$run_started_at" || "$run_started_at" == "null" ]]; then
+            echo "::error::Unable to retrieve workflow start time from GitHub Actions API."
+            exit 1
+          fi
+          stamp="$(TZ=Asia/Jakarta date -d "$run_started_at" +'%Y-%m-%d_%H-%M')"
+          echo "Workflow start time: ${run_started_at} -> ${stamp} (Asia/Jakarta)"
           tag="dbai-armbian-build-${RUN_ID}"
 
           # Derive the category from the actual matrix so the title reflects what will be built.
@@ -477,6 +484,7 @@ jobs:
             echo
             echo '## Application compatibility'
             echo
+            echo '- Bullseye: Server and Minimal only; Armbian marks this distribution end-of-service, so application and desktop variants are intentionally skipped.'
             echo '- Home Assistant and OpenMediaVault: Debian Bookworm/Trixie.'
             echo '- Kali: Debian Bookworm/Trixie/Forky only.'
             echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
