@@ -52,5 +52,34 @@ fi
 OPENBOX_AUTOSTART
 	run_host_command_logged chmod 0644 "${SDCARD}/etc/xdg/openbox/autostart"
 
-	display_alert "Openbox session installed; select Openbox at the LightDM login screen" "${EXTENSION}" "info"
+	# Armbian's first-login routine creates the initial user before handing over
+	# to LightDM. Teach it to choose Openbox; otherwise its default "xfce"
+	# session would be selected even though this image intentionally has no XFCE.
+	firstlogin_script="${SDCARD}/usr/lib/armbian/armbian-firstlogin"
+	if [[ ! -f "${firstlogin_script}" ]]; then
+		exit_with_error "Armbian first-login script not found at ${firstlogin_script}; cannot configure Openbox as the default session"
+	fi
+	run_host_command_logged python3 - "${firstlogin_script}" <<'OPENBOX_FIRSTLOGIN_PATCH'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+marker = 'ln -sf /lib/systemd/system/lightdm.service /etc/systemd/system/display-manager.service'
+block = """# Select Openbox for the DBAI standalone Openbox image.
+[[ -x $(command -v openbox-session) ]] && sed -i "s/user-session.*/user-session=openbox/" /etc/lightdm/lightdm.conf.d/11-armbian.conf
+[[ -x $(command -v openbox-session) ]] && sed -i "s/user-session.*/user-session=openbox/" /etc/lightdm/lightdm.conf.d/22-armbian-autologin.conf
+
+"""
+if "Select Openbox for the DBAI standalone Openbox image." not in text:
+    if marker not in text:
+        raise SystemExit(f"Expected LightDM setup marker not found in {path}")
+    text = text.replace(marker, block + marker, 1)
+    path.write_text(text, encoding="utf-8")
+    print(f"Configured Openbox first-login session in {path}")
+else:
+    print(f"Openbox first-login patch already present in {path}")
+OPENBOX_FIRSTLOGIN_PATCH
+
+	display_alert "Openbox session installed; Armbian first-login now selects Openbox in LightDM" "${EXTENSION}" "info"
 }
