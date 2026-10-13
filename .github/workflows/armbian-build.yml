@@ -259,16 +259,16 @@ jobs:
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
               with open(summary_path, "a", encoding="utf-8") as summary:
-                  summary.write("# DBAI Armbian build matrix\\n\\n")
-                  summary.write(f"**Total jobs:** {full_matrix_count}  \\n")
-                  summary.write(f"**OS group:** {release_group}  \\n")
-                  summary.write(f"**Filesystems:** {', '.join(filesystems)}\\n\\n")
-                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop | Total |\\n")
-                  summary.write("|---|---|---:|---:|---:|---:|---:|\\n")
+                  summary.write("# DBAI Armbian build matrix\n\n")
+                  summary.write(f"**Total jobs:** {full_matrix_count}  \n")
+                  summary.write(f"**OS group:** {release_group}  \n")
+                  summary.write(f"**Filesystems:** {', '.join(filesystems)}\n\n")
+                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop | Total |\n")
+                  summary.write("|---|---|---:|---:|---:|---:|---:|\n")
                   for release in releases:
                       for fs in filesystems:
                           row = [counts.get((release, fs, profile), 0) for profile in ("server", "minimal", "applications", "desktop")]
-                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {sum(row)} |\\n")
+                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {sum(row)} |\n")
 
           print(f"Jobs submitted to GitHub Actions: {len(matrix)}", file=sys.stderr)
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
@@ -375,13 +375,13 @@ jobs:
             echo '- **Kernel branch:** `current`'
             echo '- **Boot partition request:** 256 MiB'
             echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB'
-            echo '- **Image output:** compressed XZ when produced by Armbian Builder, with SHA-256 checksum'
+            echo '- **Image output:** compressed XZ when produced by Armbian Builder, with a portable SHA-256 checksum and per-image metadata manifest'
             echo
             echo '## Notes'
             echo
             echo '- This section documents the selected build matrix. Only successful jobs upload image and checksum assets.'
             echo '- Requested raw image size is not the compressed download file size.'
-            echo '- Actual image filenames and compressed sizes are shown in the Release assets list.'
+            echo '- Actual image filenames and compressed sizes are shown in the Release assets list. Each image also has a `.sha256` checksum and `.manifest.txt` metadata file.'
             echo
             echo "[Open GitHub Actions run](https://github.com/${GH_REPO}/actions/runs/${RUN_ID})"
           } > "$notes_file"
@@ -594,22 +594,25 @@ jobs:
 
           ./compile.sh build "${args[@]}" 2>&1 | tee "build-${FS}-${PROFILE}-${VARIANT}-${RELEASE}.log"
 
-      - name: Prepare image and checksum for release
+      - name: Prepare image, checksum, and metadata for release
         if: success()
         env:
           FS: ${{ matrix.filesystem }}
           PROFILE: ${{ matrix.profile }}
           VARIANT: ${{ matrix.variant }}
           RELEASE: ${{ matrix.release }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          image="$(find output/images -maxdepth 1 -type f \( -name '*.img.xz' -o -name '*.img' \) -print -quit)"
-          if [[ -z "$image" ]]; then
-            echo "::error::No .img.xz or .img file found in output/images."
+          mapfile -t images < <(find output/images -maxdepth 1 -type f \\( -name '*.img.xz' -o -name '*.img' \\) -print | sort)
+          if [[ "${#images[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one image in output/images, found ${#images[@]}."
+            printf '%s\\n' "${images[@]}"
             find output/images -maxdepth 1 -type f -print || true
             exit 1
           fi
+          image="${images[0]}"
 
           if [[ "$image" == *.img.xz ]]; then
             suffix="img.xz"
@@ -619,10 +622,26 @@ jobs:
 
           asset="aml-s9xx-box-${FS}-${RELEASE}-${PROFILE}-${VARIANT}.${suffix}"
           cp "$image" "dist/$asset"
-          sha256sum "dist/$asset" > "dist/${asset}.sha256"
+          # Keep the checksum portable: it must verify after downloading the release assets.
+          (cd dist && sha256sum "$asset" > "${asset}.sha256")
+          bytes="$(stat -c '%s' "dist/$asset")"
+          size_human="$(du -h "dist/$asset" | cut -f1)"
+          digest="$(awk '{print $1}' "dist/${asset}.sha256")"
+          {
+            echo "asset=${asset}"
+            echo "source_image=${image}"
+            echo "board=aml-s9xx-box"
+            echo "filesystem=${FS}"
+            echo "release=${RELEASE}"
+            echo "profile=${PROFILE}"
+            echo "variant=${VARIANT}"
+            echo "size_bytes=${bytes}"
+            echo "size_human=${size_human}"
+            echo "sha256=${digest}"
+          } > "dist/${asset}.manifest.txt"
           ls -lh dist/
 
-      - name: Upload image and checksum to GitHub Release
+      - name: Upload image, checksum, and metadata to GitHub Release
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
