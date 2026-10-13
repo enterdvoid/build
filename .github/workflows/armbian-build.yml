@@ -245,6 +245,31 @@ jobs:
               raise SystemExit("Tidak ada build yang dipilih. Pilih satu atau beberapa profil image.")
           if len(matrix) > 256:
               raise SystemExit(f"Matriks menghasilkan {len(matrix)} job; batas GitHub Actions adalah 256.")
+
+          matrix_keys = [
+              (item["filesystem"], item["release"], item["profile"], item["variant"])
+              for item in matrix
+          ]
+          if len(set(matrix_keys)) != len(matrix_keys):
+              raise SystemExit("Matriks mengandung kombinasi build duplikat.")
+
+          # Put a compact, OS-by-OS inventory in the Actions run summary.
+          from collections import Counter
+          counts = Counter((item["release"], item["filesystem"], item["profile"]) for item in matrix)
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as summary:
+                  summary.write("# DBAI Armbian build matrix\\n\\n")
+                  summary.write(f"**Total jobs:** {full_matrix_count}  \\n")
+                  summary.write(f"**OS group:** {release_group}  \\n")
+                  summary.write(f"**Filesystems:** {', '.join(filesystems)}\\n\\n")
+                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop | Total |\\n")
+                  summary.write("|---|---|---:|---:|---:|---:|---:|\\n")
+                  for release in releases:
+                      for fs in filesystems:
+                          row = [counts.get((release, fs, profile), 0) for profile in ("server", "minimal", "applications", "desktop")]
+                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {sum(row)} |\\n")
+
           print(f"Jobs submitted to GitHub Actions: {len(matrix)}", file=sys.stderr)
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
           print("count=" + str(len(matrix)))
