@@ -687,6 +687,14 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
 
+      - name: Remove local image files after successful upload
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- dist output/images
+          echo "Local image files removed; Release assets remain available."
+
       - name: Show runner specs and remaining storage (AFTER BUILD)
         if: always()
         shell: bash
