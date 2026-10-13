@@ -381,6 +381,7 @@ jobs:
     outputs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       release_title: ${{ steps.release.outputs.release_title }}
+      image_version: ${{ steps.release.outputs.image_version }}
     steps:
       - name: Checkout and validate release prerequisites
         uses: actions/checkout@v7
@@ -459,7 +460,9 @@ jobs:
             exit 1
           fi
           stamp="$(TZ=Asia/Jakarta date -d "$run_started_at" +'%Y-%m-%d_%H-%M')"
+          image_version="$(TZ=Asia/Jakarta date -d "$run_started_at" +'%Y.%m.%d').${RUN_NUMBER}"
           echo "Workflow start time: ${run_started_at} -> ${stamp} (Asia/Jakarta)"
+          echo "DBAI image/package version: ${image_version}"
           tag="dbai-armbian-build-${RUN_ID}"
 
           # Derive the category from the actual matrix so the title reflects what will be built.
@@ -542,6 +545,8 @@ jobs:
             echo
             echo '## Common image parameters'
             echo
+            echo "- **Vendor:** DBAI Armbian"
+            echo "- **Image/package version:** ${image_version}"
             echo '- **Board:** `aml-s9xx-box`'
             echo '- **Kernel branch:** `current`'
             echo '- **Boot partition request:** 256 MiB'
@@ -564,7 +569,8 @@ jobs:
           fi
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
           echo "release_title=$release_title" >> "$GITHUB_OUTPUT"
-          echo "Prepared release: $release_title ($tag)"
+          echo "image_version=$image_version" >> "$GITHUB_OUTPUT"
+          echo "Prepared release: $release_title ($tag; image version $image_version)"
   build:
     if: inputs.cleanup_run_history != true
     needs: [prepare, create_release]
@@ -759,10 +765,26 @@ jobs:
           BUILD_MINIMAL: ${{ matrix.build_minimal }}
           EXTENSION: ${{ matrix.extension }}
           DESKTOP_ENV: ${{ matrix.desktop_env }}
+          BUILD_VERSION: ${{ needs.create_release.outputs.image_version }}
         run: |
           set -o pipefail
+          # Avoid passing an empty terminal width into package maintainer scripts.
+          export COLUMNS=80
+          export LINES=24
           args=(
             "BOARD=aml-s9xx-box"
+            "REVISION=${BUILD_VERSION}"
+            "IMAGE_VERSION=${BUILD_VERSION}"
+            "VENDOR=DBAI"
+            "VENDORPRETTYNAME=DBAI Armbian"
+            "VENDORCOLOR=39;174;96"
+            "VENDORURL=https://github.com/enterdvoid/build"
+            "VENDORDOCS=https://github.com/enterdvoid/build#readme"
+            "VENDORSUPPORT=https://github.com/enterdvoid/build/issues"
+            "VENDORBUGS=https://github.com/enterdvoid/build/issues"
+            "VENDORLOGO=armbian-logo"
+            "MAINTAINER=DBAI Armbian Project"
+            "MAINTAINERMAIL=noreply@github.com"
             "BOOTSIZE=256"
             "FIXED_IMAGE_SIZE=${IMAGE_SIZE}"
             "ROOTFS_TYPE=${FS}"
