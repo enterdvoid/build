@@ -223,26 +223,77 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Create release
+      - name: Create descriptive release
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
+          SERVER: ${{ inputs.server }}
+          MINIMAL: ${{ inputs.minimal }}
+          HOME_ASSISTANT: ${{ inputs.home_assistant }}
+          OPENMEDIAVAULT: ${{ inputs.openmediavault }}
+          KALI: ${{ inputs.kali }}
+          DOCKER_CE: ${{ inputs.docker_ce }}
+          ALL_DESKTOPS: ${{ inputs.all_desktops }}
+          DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
+          DESKTOP_MATE: ${{ inputs.desktop_mate }}
+          DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
+          DESKTOP_CINNAMON: ${{ inputs.desktop_cinnamon }}
+          DESKTOP_KDE_PLASMA: ${{ inputs.desktop_kde_plasma }}
+          DESKTOP_KDE_NEON: ${{ inputs.desktop_kde_neon }}
+          DESKTOP_I3_WM: ${{ inputs.desktop_i3_wm }}
+          DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
+          DESKTOP_XMONAD: ${{ inputs.desktop_xmonad }}
+          DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
+          DESKTOP_DEEPIN: ${{ inputs.desktop_deepin }}
         run: |
+          set -euo pipefail
+          stamp="$(python3 - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          started = os.environ.get('RUN_STARTED_AT', '')
+          dt = datetime.fromisoformat(started.replace('Z', '+00:00')) if started else datetime.now().astimezone()
+          print(dt.astimezone(ZoneInfo('Asia/Jakarta')).strftime('%Y-%m-%d_%H-%M'))
+          PY
+          )"
           tag="dbai-armbian-build-${RUN_ID}"
+          release_title="DBAI Armbian Build ${stamp}"
+          python3 - <<'PY' > release-summary.md
+          import os
+          fs_input = os.environ.get('FILESYSTEM_INPUT', 'ext4')
+          filesystems = ['ext4', 'btrfs'] if fs_input == 'both' else [fs_input]
+          all_types = os.environ.get('ALL_BUILD_TYPES', 'false').lower() == 'true'
+          truthy = lambda key: os.environ.get(key, 'false').lower() == 'true'
+          releases = ['bookworm', 'trixie', 'forky', 'jammy', 'noble', 'resolute']
+          builds = []
+          if all_types or truthy('SERVER'): builds.append('Server — ' + ', '.join(releases))
+          if all_types or truthy('MINIMAL'): builds.append('Minimal — ' + ', '.join(releases))
+          apps = [('HOME_ASSISTANT','Home Assistant (Trixie)'),('OPENMEDIAVAULT','OpenMediaVault (Trixie)'),('KALI','Kali (Trixie)'),('DOCKER_CE','Docker CE (Trixie)')]
+          for key, label in apps:
+              if all_types or truthy(key): builds.append(label)
+          desktops = [('DESKTOP_XFCE','XFCE'),('DESKTOP_MATE','MATE'),('DESKTOP_GNOME','GNOME'),('DESKTOP_CINNAMON','Cinnamon'),('DESKTOP_KDE_PLASMA','KDE Plasma'),('DESKTOP_KDE_NEON','KDE Neon'),('DESKTOP_I3_WM','i3-wm'),('DESKTOP_ENLIGHTENMENT','Enlightenment'),('DESKTOP_XMONAD','Xmonad'),('DESKTOP_BUDGIE','Budgie'),('DESKTOP_DEEPIN','Deepin')]
+          if all_types or truthy('ALL_DESKTOPS'): builds.append('Desktop (Trixie): all 11 environments')
+          else:
+              for key, label in desktops:
+                  if truthy(key): builds.append('Desktop ' + label + ' (Trixie)')
+          if not builds: builds.append('No build type recognized; check workflow inputs')
+          lines = ['# DBAI Armbian Build', '', '## Build selection', '', '- Target filesystem: ' + ', '.join(filesystems)]
+          lines += ['- ' + item for item in builds]
+          lines += ['', '## Common parameters', '', '- Board: `aml-s9xx-box`', '- Kernel branch: `current`', '- Boot partition request: 256 MiB', '- Requested image size: Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB', '- Compression: XZ image when produced by the builder, plus SHA-256 checksum', '', '## Important notes', '', '- This release documents selected workflow inputs; only successful jobs upload firmware and checksums.', '- Actual kernel version, compressed file size, checksum, and job result are defined by each individual job log and asset.', '- Requested image size is not the compressed `.img.xz` download size.', '- Build logs and post-build resource reports are available as Actions artifacts when the relevant steps run.', '', '- Workflow run: https://github.com/' + os.environ.get('GITHUB_REPOSITORY','') + '/actions/runs/' + os.environ.get('RUN_ID',''), '- Run number: ' + os.environ.get('RUN_NUMBER',''), '- Workflow started (UTC): ' + os.environ.get('RUN_STARTED_AT','')]
+          print('\n'.join(lines))
+          PY
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists; reusing it."
+            gh release edit "$tag" --title "$release_title" --notes-file release-summary.md --prerelease --latest=false
           else
-            gh release create "$tag" \
-              --title "DBAI Armbian Build #${RUN_NUMBER}" \
-              --notes "Automated DBAI Armbian build batch. Assets are named by filesystem, profile, variant, and release." \
-              --prerelease \
-              --latest=false
+            gh release create "$tag" --title "$release_title" --notes-file release-summary.md --prerelease --latest=false
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
   build:
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
@@ -477,6 +528,68 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
 
+      - name: Post-build runner specs and remaining storage
+        if: always()
+        shell: bash
+        env:
+          FS: ${{ matrix.filesystem }}
+          PROFILE: ${{ matrix.profile }}
+          VARIANT: ${{ matrix.variant }}
+          RELEASE: ${{ matrix.release }}
+          IMAGE_SIZE: ${{ matrix.image_size }}
+        run: |
+          set +e
+          report="post-build-report.txt"
+          {
+            echo "========== DBAI ARMBIAN BUILD: POST-BUILD REPORT =========="
+            echo "LABEL: AFTER BUILD (POST-BUILD), not the PRE-BUILD snapshot"
+            echo "UTC time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "Job status at report time: ${{ job.status }}"
+            echo "Board: aml-s9xx-box"
+            echo "Filesystem: $FS"
+            echo "Profile: $PROFILE"
+            echo "Variant: $VARIANT"
+            echo "Release: $RELEASE"
+            echo "Requested image size: ${IMAGE_SIZE} MiB"
+            echo
+            echo "=== OS/kernel AFTER BUILD ==="
+            grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release 2>/dev/null
+            uname -a
+            echo
+            echo "=== CPU AFTER BUILD ==="
+            lscpu | grep -E '^(Architecture|CPU\(s\)|Model name|Thread|Core|Socket|Virtualization):' || true
+            echo
+            echo "=== RAM and swap AFTER BUILD ==="
+            free -h
+            swapon --show || true
+            echo
+            echo "=== Filesystem capacity AFTER BUILD ==="
+            df -hT / "$GITHUB_WORKSPACE" 2>&1
+            echo
+            echo "=== Inode usage AFTER BUILD ==="
+            df -ih / "$GITHUB_WORKSPACE" 2>&1
+            echo
+            echo "=== Docker AFTER BUILD ==="
+            docker --version 2>&1
+            docker info --format 'Docker root: {{.DockerRootDir}} | Storage driver: {{.Driver}}' 2>&1
+            docker system df 2>&1 || true
+            echo
+            echo "=== Directory sizes AFTER BUILD ==="
+            du -sh "$GITHUB_WORKSPACE/.docker-data" 2>&1 || true
+            du -sh output output/images output/logs dist 2>&1 || true
+            echo
+            echo "=== Image/checksum assets in workspace ==="
+            find output/images dist -maxdepth 1 -type f \( -name '*.img' -o -name '*.img.xz' -o -name '*.sha256' \) -printf '%p | %s bytes\n' 2>/dev/null || true
+            echo "==========================================================="
+          } 2>&1 | tee "$report"
+          {
+            echo
+            echo "## DBAI Armbian Build — AFTER BUILD report"
+            echo 'Captured after the build step; these figures are not the PRE-BUILD measurements.'
+            echo '```text'
+            cat "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload build log as Actions artifact
         if: always()
         uses: actions/upload-artifact@v4
