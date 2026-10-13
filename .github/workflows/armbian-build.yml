@@ -1,10 +1,6 @@
 name: DBAI Armbian Build
 
 on:
-  # Temporary test trigger: creating this marker runs only the last tested matrix entry.
-  push:
-    paths:
-      - ".github/run-dbai-build-test"
   workflow_dispatch:
     inputs:
       filesystem:
@@ -128,11 +124,11 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ github.event_name == 'push' && 'btrfs' || inputs.filesystem }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
-          HOME_ASSISTANT: ${{ github.event_name == 'push' && 'true' || inputs.home_assistant }}
+          HOME_ASSISTANT: ${{ inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
@@ -212,7 +208,7 @@ jobs:
           PY
       - name: Show selected matrix
         env:
-          FILESYSTEM_INPUT: ${{ github.event_name == 'push' && 'btrfs' || inputs.filesystem }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
         run: |
           echo "Filesystem: $FILESYSTEM_INPUT"
@@ -234,12 +230,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-          RUN_STARTED_AT: ${{ github.event.head_commit.timestamp || github.run_started_at }}
-          FILESYSTEM_INPUT: ${{ github.event_name == 'push' && 'btrfs' || inputs.filesystem }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
+          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
-          HOME_ASSISTANT: ${{ github.event_name == 'push' && 'true' || inputs.home_assistant }}
+          HOME_ASSISTANT: ${{ inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
