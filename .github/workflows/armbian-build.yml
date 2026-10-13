@@ -1,6 +1,10 @@
 name: DBAI Armbian Build
 
 on:
+  # Temporary test trigger: creating this marker runs only the last tested matrix entry.
+  push:
+    paths:
+      - ".github/run-dbai-build-test"
   workflow_dispatch:
     inputs:
       filesystem:
@@ -124,11 +128,11 @@ jobs:
       - name: Generate build matrix
         id: matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          FILESYSTEM_INPUT: ${{ github.event_name == 'push' && 'btrfs' || inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
-          HOME_ASSISTANT: ${{ inputs.home_assistant }}
+          HOME_ASSISTANT: ${{ github.event_name == 'push' && 'true' || inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
@@ -208,7 +212,7 @@ jobs:
           PY
       - name: Show selected matrix
         env:
-          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          FILESYSTEM_INPUT: ${{ github.event_name == 'push' && 'btrfs' || inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
         run: |
           echo "Filesystem: $FILESYSTEM_INPUT"
@@ -230,12 +234,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-          RUN_STARTED_AT: ${{ github.run_started_at }}
-          FILESYSTEM_INPUT: ${{ inputs.filesystem }}
+          RUN_STARTED_AT: ${{ github.event.head_commit.timestamp || github.run_started_at }}
+          FILESYSTEM_INPUT: ${{ github.event_name == 'push' && 'btrfs' || inputs.filesystem }}
           ALL_BUILD_TYPES: ${{ inputs.all_build_types }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
-          HOME_ASSISTANT: ${{ inputs.home_assistant }}
+          HOME_ASSISTANT: ${{ github.event_name == 'push' && 'true' || inputs.home_assistant }}
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
@@ -341,7 +345,7 @@ jobs:
           remove-docker-images: "true"
 
       - name: Checkout Armbian builder and local customizations
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -352,7 +356,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker_root="$GITHUB_WORKSPACE/.docker-data"
+          docker_root="$(realpath -m "$GITHUB_WORKSPACE/../.docker-data")"
           echo "Docker data root will be: $docker_root"
           sudo systemctl stop docker.socket docker.service || true
           sudo mkdir -p "$docker_root"
@@ -426,6 +430,12 @@ jobs:
           docker system df || true
           echo "=========================================================="
 
+      - name: Ensure custom extension directory exists
+        shell: bash
+        run: |
+          mkdir -p userpatches/extensions
+          touch userpatches/extensions/.gitkeep
+
       - name: Check custom board configuration
         run: |
           test -f config/boards/aml-s9xx-box.tvb || {
@@ -452,7 +462,7 @@ jobs:
       # Register QEMU/binfmt on the runner host so Docker can execute ARM64
       # userspace while the x86_64 GitHub runner builds the ARM64 rootfs.
       - name: Enable ARM64 emulation with QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
 
@@ -551,13 +561,40 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" dist/* --clobber
 
+      - name: Show runner specs and remaining storage (AFTER BUILD)
+        if: always()
+        shell: bash
+        run: |
+          report="$RUNNER_TEMP/dbai-after-build-report.txt"
+          {
+            echo "========== DBAI ARMBIAN BUILD: AFTER BUILD REPORT =========="
+            date -Is
+            echo "=== Runner OS ==="
+            cat /etc/os-release | grep -E '^(PRETTY_NAME|VERSION_ID)=' || true
+            uname -a
+            echo "=== CPU ==="
+            lscpu | grep -E '^(Architecture|CPU\\(s\\)|Model name|CPU MHz|Thread|Core|Socket|Virtualization):' || true
+            echo "=== RAM and swap ==="
+            free -h
+            swapon --show || true
+            echo "=== Remaining disk space ==="
+            df -h / || true
+            df -h "$GITHUB_WORKSPACE" || true
+            df -ih / || true
+            echo "=== Docker storage ==="
+            docker info --format 'Docker root: {{.DockerRootDir}} | Storage driver: {{.Driver}}' || true
+            docker system df || true
+            echo "=========================================================="
+          } | tee "$report"
+
       - name: Upload build log as Actions artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: log-${{ matrix.filesystem }}-${{ matrix.profile }}-${{ matrix.variant }}-${{ matrix.release }}
           path: |
             build-${{ matrix.filesystem }}-${{ matrix.profile }}-${{ matrix.variant }}-${{ matrix.release }}.log
             output/logs/*.log.ans
+            ${{ runner.temp }}/dbai-after-build-report.txt
           if-no-files-found: ignore
           retention-days: 7
