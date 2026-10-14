@@ -136,6 +136,16 @@ on:
         required: true
         type: boolean
         default: false
+      proxmox_official:
+        description: "Proxmox VE Official packages 9.x: Debian Trixie, kernel Armbian (eksperimental pada STB)"
+        required: true
+        type: boolean
+        default: false
+      proxmox_community:
+        description: "Proxmox Community PXVIRT 8: Debian Bookworm, kernel Armbian"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -175,6 +185,8 @@ jobs:
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
           DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
           DESKTOP_OPENBOX: ${{ inputs.desktop_openbox }}
+          PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
+          PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
@@ -291,11 +303,27 @@ jobs:
                           "extension": "", "desktop_env": desktop
                       })
 
+          # Proxmox variants use dedicated Debian bases independent of the general OS selector:
+          # official Proxmox VE 9 packages on Trixie; community PXVIRT 8 packages on Bookworm.
+          proxmox_variants = []
+          if truthy("PROXMOX_OFFICIAL"):
+              proxmox_variants.append(("proxmox-official", "proxmox-official", "trixie"))
+          if truthy("PROXMOX_COMMUNITY"):
+              proxmox_variants.append(("proxmox-community", "proxmox-community", "bookworm"))
+          for variant, extension, release in proxmox_variants:
+              for fs in filesystems:
+                  matrix.append({
+                      "filesystem": fs, "profile": "proxmox", "variant": variant,
+                      "release": release, "image_size": 12288,
+                      "build_desktop": "no", "build_minimal": "no",
+                      "extension": extension, "desktop_env": ""
+                  })
+
           # Interleave filesystem/profile queues instead of scheduling all ext4 jobs before btrfs.
           # This brings long-running Desktop jobs into the queue earlier and balances runner utilization.
           bucket_order = [
               (fs, profile)
-              for profile in ("server", "minimal", "applications", "desktop")
+              for profile in ("server", "minimal", "applications", "desktop", "proxmox")
               for fs in filesystems
           ]
           matrix_queues = {
@@ -334,10 +362,14 @@ jobs:
               and select_all_apps
               and truthy("DESKTOP")
           ):
-              expected_default_jobs = 166
+              expected_default_jobs = (
+                  166
+                  + len(filesystems) * int(truthy("PROXMOX_OFFICIAL"))
+                  + len(filesystems) * int(truthy("PROXMOX_COMMUNITY"))
+              )
               if len(matrix) != expected_default_jobs:
                   raise SystemExit(
-                      f"Default full matrix changed unexpectedly: expected {expected_default_jobs} jobs, got {len(matrix)}."
+                      f"Default full matrix changed unexpectedly: expected {expected_default_jobs} jobs with selected Proxmox options, got {len(matrix)}."
                   )
 
           # Put a compact, OS-by-OS inventory in the Actions run summary.
@@ -350,12 +382,13 @@ jobs:
                   summary.write(f"**Total jobs:** {full_matrix_count}  \n")
                   summary.write(f"**OS group:** {release_group}  \n")
                   summary.write(f"**Filesystems:** {', '.join(filesystems)}\n\n")
-                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop / WM | Total |\n")
-                  summary.write("|---|---|---:|---:|---:|---:|---:|\n")
-                  for release in releases:
+                  summary.write("| OS release | Filesystem | Server | Minimal | Applications | Desktop / WM | Proxmox | Total |\n")
+                  summary.write("|---|---|---:|---:|---:|---:|---:|---:|\n")
+                  summary_releases = list(dict.fromkeys(releases + [item["release"] for item in matrix]))
+                  for release in summary_releases:
                       for fs in filesystems:
-                          row = [counts.get((release, fs, profile), 0) for profile in ("server", "minimal", "applications", "desktop")]
-                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {sum(row)} |\n")
+                          row = [counts.get((release, fs, profile), 0) for profile in ("server", "minimal", "applications", "desktop", "proxmox")]
+                          summary.write(f"| {release} | {fs} | {row[0]} | {row[1]} | {row[2]} | {row[3]} | {row[4]} | {sum(row)} |\n")
 
           print(f"Jobs submitted to GitHub Actions: {len(matrix)}", file=sys.stderr)
           print("matrix=" + json.dumps({"include": matrix}, separators=(",", ":")))
@@ -370,11 +403,15 @@ jobs:
           APPLICATIONS: ${{ inputs.applications }}
           DESKTOP: ${{ inputs.desktop }}
           SPEEDTEST: ${{ inputs.speedtest }}
+          PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
+          PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop=$DESKTOP"
           echo "Openbox WM checkbox: ${{ inputs.desktop_openbox }} (also included whenever desktop=all)"
+          echo "Proxmox Official (Trixie): $PROXMOX_OFFICIAL"
+          echo "Proxmox Community/PXVIRT 8 (Bookworm): $PROXMOX_COMMUNITY"
           echo "VM Speedtest enabled: $SPEEDTEST"
           echo "Build matrix generated."
 
@@ -412,6 +449,8 @@ jobs:
               "kali": "applications-kali",
               "docker-ce": "docker-ce",
               "openbox": "desktop-openbox",
+              "proxmox-official": "proxmox-official",
+              "proxmox-community": "proxmox-community",
           }
           root = pathlib.Path(".")
           extension_rows = [row for row in matrix.get("include", []) if row.get("extension")]
@@ -460,6 +499,8 @@ jobs:
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
           DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
+          PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
+          PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
         shell: bash
         run: |
           set -euo pipefail
@@ -479,7 +520,7 @@ jobs:
           import json, os
           matrix = json.loads(os.environ["MATRIX_JSON"])
           profiles = {row["profile"] for row in matrix.get("include", [])}
-          for name in ["server", "minimal", "applications", "desktop"]:
+          for name in ["server", "minimal", "applications", "desktop", "proxmox"]:
               if name in profiles:
                   print(name)
           PY
@@ -488,8 +529,22 @@ jobs:
             echo "::error::No selected profile found in generated matrix."
             exit 1
           fi
-          if [[ "${#profiles[@]}" -eq 4 ]]; then
-            category_title="All"
+          standard_profiles=("server" "minimal" "applications" "desktop")
+          standard_profile_count=0
+          for standard_profile in "${standard_profiles[@]}"; do
+            for profile in "${profiles[@]}"; do
+              if [[ "$profile" == "$standard_profile" ]]; then
+                standard_profile_count=$((standard_profile_count + 1))
+                break
+              fi
+            done
+          done
+          if [[ "$standard_profile_count" -eq 4 ]]; then
+            if [[ " ${profiles[*]} " == *" proxmox "* ]]; then
+              category_title="All + Proxmox"
+            else
+              category_title="All"
+            fi
           else
             category_title=""
             for profile in "${profiles[@]}"; do
@@ -498,6 +553,7 @@ jobs:
                 minimal) display="Minimal" ;;
                 applications) display="Applications" ;;
                 desktop) display="Desktop" ;;
+                proxmox) display="Proxmox" ;;
                 *) echo "::error::Unknown profile: $profile"; exit 1 ;;
               esac
               if [[ -n "$category_title" ]]; then category_title+=" + "; fi
@@ -519,6 +575,8 @@ jobs:
             echo "- **OS branding:** `Armbian-DBAI-2K26` / `DBAI-2K26 <release>`"
             echo "- **VM Speedtest:** ${SPEEDTEST} (one test per build job when enabled)"
             echo "- **Selected profile groups:** ${category_title}"
+            if [[ "$PROXMOX_OFFICIAL" == "true" ]]; then echo "- **Proxmox Official:** Proxmox VE 9 packages on Debian Trixie; retains Armbian kernel; experimental on Amlogic STB"; fi
+            if [[ "$PROXMOX_COMMUNITY" == "true" ]]; then echo "- **Proxmox Community:** PXVIRT 8 on Debian Bookworm; retains Armbian kernel"; fi
             echo "- **Matrix jobs:** $(python3 -c 'import json,os; print(len(json.loads(os.environ["MATRIX_JSON"]).get("include", [])))')"
             echo "- **Image asset format:** `aml-s9xx-box-{filesystem}-{os-release}-{variant}.img.xz` (or `.img`)"
             if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
