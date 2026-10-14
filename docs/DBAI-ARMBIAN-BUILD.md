@@ -36,7 +36,7 @@ VENDORPRETTYNAME='Armbian-DBAI-2K26'
 
 File ini juga berisi metadata board, kernel, arsitektur, serta nilai `EXTENSIONS` yang dihasilkan framework. `BUILD_REPOSITORY_COMMIT` harus menunjukkan commit source yang benar-benar digunakan dalam build; nilainya tidak dipatok ke contoh commit lama.
 
-**Catatan branding firmware:** `BUILD_REPOSITORY_URL` pada `/etc/armbian-release` dan `/etc/armbian-image-release` sengaja ditulis sebagai `https://github.com/armarchindo/build`, begitu juga URL vendor/support/bugs pada metadata image. Ini hanya mengganti referensi yang tertanam di firmware. Repository source, workflow GitHub Actions, riwayat run, dan GitHub Releases tetap berada di `enterdvoid/build`; `BUILD_REPOSITORY_COMMIT` tetap merujuk ke commit source yang benar-benar dipakai.
+**Catatan branding firmware:** `lib/functions/bsp/armbian-bsp-cli-deb.sh` menulis `BUILD_REPOSITORY_URL=https://github.com/armarchindo/build` ke `/etc/armbian-release`. Saat image dibuat, `lib/functions/rootfs/distro-agnostic.sh` menyalin berkas ini ke `/etc/armbian-image-release`, sehingga keduanya menampilkan URL brand yang sama. URL vendor/support/bugs dan URL pada `/etc/os-release` juga memakai `armarchindo`. Ini hanya mengganti referensi yang tertanam di firmware. Remote Git sumber, workflow GitHub Actions, riwayat run, dan GitHub Releases tetap berada di `enterdvoid/build`; `BUILD_REPOSITORY_COMMIT` tetap menunjukkan commit source yang benar-benar digunakan.
 
 ### Isi yang diharapkan di `/etc/armbian-release`
 
