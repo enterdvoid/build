@@ -150,7 +150,7 @@ if [[ "$hermes_enabled" == true ]]; then
 		chmod 0644 "$INSTALLER"
 		runuser --user "$HERMES_USER" -- env HOME="$HERMES_HOME" USER="$HERMES_USER" LOGNAME="$HERMES_USER" \
 			PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-			bash "$INSTALLER" --skip-browser
+			bash "$INSTALLER" --non-interactive --skip-browser
 		rm -f "$INSTALLER"
 	fi
 	if [[ ! -x "$HERMES_BIN" ]]; then
