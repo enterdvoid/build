@@ -109,7 +109,7 @@ jobs:
 
           workflow = pathlib.Path(".github/workflows/armbian-build.yml").read_text(encoding="utf-8")
           match = re.search(
-              r"(?ms)^      - name: Prepare image and checksum for release\\n.*?^        run: \\|\\n(.*?)(?=^      - name:|\\Z)",
+              r"(?ms)^      - name: Prepare image and checksum for release\n.*?^        run: \|\n(.*?)(?=^      - name:|\Z)",
               workflow,
           )
           if not match:
@@ -117,7 +117,7 @@ jobs:
           script = textwrap.dedent(match.group(1))
           result = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
           if result.returncode:
-              raise SystemExit(f"Image preparation/QA shell syntax failed:\\n{result.stderr}")
+              raise SystemExit(f"Image preparation/QA shell syntax failed:\n{result.stderr}")
           print("Image preparation/QA shell syntax OK.")
           PY
           grep -Fq 'local type="ea"' lib/functions/image/partitioning.sh || {
