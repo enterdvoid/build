@@ -2,6 +2,8 @@
 
 The AI firmware variants are ARM64 images for `aml-s9xx-box`. Supported releases are Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute. Each variant uses the workflow-selected filesystem (ext4, btrfs, or both) and an 8 GiB image target.
 
+**Panduan pengguna:** untuk langkah penggunaan dari boot pertama, konfigurasi provider/model Hermes, dashboard 9Router, penggabungan Hermes + 9Router, pembaruan, keamanan API, dan troubleshooting, baca [Panduan Penggunaan Hermes Agent dan 9Router](PANDUAN-HERMES-9ROUTER.md).
+
 ## Build selection
 
 In **DBAI Armbian Build → Applications preset**:
