@@ -57,12 +57,13 @@ on:
         type: boolean
         default: true
       applications:
-        description: "Preset aplikasi: all = semua aplikasi termasuk 3 varian AI; none = hanya yang dicentang; atau pilih Hermes / 9Router / gabungan"
+        description: "Preset aplikasi: all = semua aplikasi + 3 varian AI; ai-all = ketiga varian AI saja; none = hanya checkbox; atau pilih Hermes / 9Router / gabungan"
         required: true
         type: choice
         default: all
         options:
           - all
+          - ai-all
           - none
           - hermes
           - 9router
@@ -245,7 +246,7 @@ jobs:
               ("lightnvr-go2rtc", "cctv-lightnvr", "CCTV_LIGHTNVR", {"trixie"}),
           ]
           application_mode = os.environ.get("APPLICATIONS", "all").lower()
-          if application_mode not in {"all", "none", "hermes", "9router", "both"}:
+          if application_mode not in {"all", "ai-all", "none", "hermes", "9router", "both"}:
               raise SystemExit(f"Invalid application preset: {application_mode}")
           select_all_apps = application_mode == "all"
           selected_apps = [
@@ -264,6 +265,7 @@ jobs:
           ]
           ai_preset_variants = {
               "none": set(),
+              "ai-all": {variant for variant, _, _ in ai_stack_variants},
               "hermes": {"hermes-agent"},
               "9router": {"9router"},
               "both": {"hermes-9router"},
@@ -469,7 +471,7 @@ jobs:
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL desktop_mode=$DESKTOP_MODE"
-          echo "Application preset: $APPLICATIONS (all = all standard apps + Hermes/9Router variants; hermes / 9router / both = AI-only preset; none = individual app checkboxes only)"
+          echo "Application preset: $APPLICATIONS (all = all standard apps + 3 AI variants; ai-all = 3 AI variants only; hermes / 9router / both = selected AI variant; none = individual app checkboxes only)"
           echo "Desktop mode: $DESKTOP_MODE (all = all supported DEs + Openbox; openbox = standalone; custom = individual DE checkboxes; none = no desktop)"
           echo "CasaOS (Bookworm): $CASAOS"
           echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
