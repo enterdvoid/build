@@ -173,6 +173,7 @@ jobs:
               if len(matrix) != 198:
                   raise SystemExit(f"Full matrix expected 198 jobs without Proxmox; got {len(matrix)}.")
               print("Full matrix regression check passed: 198 jobs without Proxmox.")
+          PY
 
       - name: Verify installation and secret-handling safeguards
         shell: bash
@@ -184,7 +185,8 @@ jobs:
           grep -Fq 'MACHINE_ID_SALT="$(openssl rand -hex 32)"' extensions/ai-stack-common.sh
           grep -Fq 'REQUIRE_API_KEY=true' extensions/ai-stack-common.sh
           grep -Fq 'https://hermes-agent.nousresearch.com/install.sh' extensions/ai-stack-common.sh
+          grep -Fq 'bash "$INSTALLER" --non-interactive --skip-browser' extensions/ai-stack-common.sh
           grep -Fq 'providers.dbai-9router.api' extensions/ai-stack-common.sh
-          grep -Fq 'printf '''%s''' "$api_key" | runuser' extensions/ai-stack-common.sh
+          grep -Fq 'api_key" | runuser --user dbai-hermes' extensions/ai-stack-common.sh
           grep -Fq 'sudo dbai-ai-setup --connect-hermes' docs/AI-STACK-FIRMWARE.md
           echo "AI setup, persistence, API authentication, and secret-handling checks passed."
