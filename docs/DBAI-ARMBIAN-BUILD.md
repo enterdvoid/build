@@ -25,16 +25,18 @@ Field utama yang diharapkan:
 ```ini
 VENDOR="DBAI"
 VENDORCOLOR="39;174;96"
-VENDORDOCS="https://github.com/enterdvoid/build#readme"
-VENDORURL="https://github.com/enterdvoid/build"
-VENDORSUPPORT="https://github.com/enterdvoid/build/issues"
-VENDORBUGS="https://github.com/enterdvoid/build/issues"
+VENDORDOCS="https://github.com/armarchindo/build#readme"
+VENDORURL="https://github.com/armarchindo/build"
+VENDORSUPPORT="https://github.com/armarchindo/build/issues"
+VENDORBUGS="https://github.com/armarchindo/build/issues"
 VERSION=26.11.0
 REVISION=26.11.0
 VENDORPRETTYNAME='Armbian-DBAI-2K26'
 ```
 
 File ini juga berisi metadata board, kernel, arsitektur, serta nilai `EXTENSIONS` yang dihasilkan framework. `BUILD_REPOSITORY_COMMIT` harus menunjukkan commit source yang benar-benar digunakan dalam build; nilainya tidak dipatok ke contoh commit lama.
+
+**Catatan branding firmware:** `BUILD_REPOSITORY_URL` pada `/etc/armbian-release` dan `/etc/armbian-image-release` sengaja ditulis sebagai `https://github.com/armarchindo/build`, begitu juga URL vendor/support/bugs pada metadata image. Ini hanya mengganti referensi yang tertanam di firmware. Repository source, workflow GitHub Actions, riwayat run, dan GitHub Releases tetap berada di `enterdvoid/build`; `BUILD_REPOSITORY_COMMIT` tetap merujuk ke commit source yang benar-benar dipakai.
 
 ### Isi yang diharapkan di `/etc/armbian-release`
 
