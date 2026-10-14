@@ -354,7 +354,7 @@ if [[ "$MODE" == "9router" || "$MODE" == "both" ]]; then
 	fi
 	if [[ -s "$ROUTER_ENV" ]]; then
 		initial_password="$(sed -n 's/^INITIAL_PASSWORD=//p' "$ROUTER_ENV" | head -n 1)"
-		printf 'Initial dashboard password: %s\n' "$initial_password"
+		printf 'Initial dashboard password (only valid until changed): %s\n' "$initial_password"
 		echo "Log in, change the initial password, and connect your provider in the dashboard."
 		echo "For API clients, create an API key under Settings / API Keys. Hermes + 9Router can import it with: sudo dbai-ai-setup --connect-hermes"
 		echo "Security check: the first-boot log tests whether /v1/models rejects requests without a bearer token."
