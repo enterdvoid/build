@@ -730,38 +730,58 @@ jobs:
             echo "=== DBAI VM Network Speedtest ==="
             echo "Timestamp: $(date -Is)"
             echo "Runner: $(uname -n)"
+            echo "OS: $(. /etc/os-release; echo "$PRETTY_NAME")"
+            echo "Architecture: $(dpkg --print-architecture)"
           } | tee "$report"
 
-          echo "Installing Ookla Speedtest CLI from its official Linux package repository..."
-          if ! curl -fsSL https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh -o "$RUNNER_TEMP/ookla-speedtest-repo.sh"; then
-            echo "Speedtest setup failed while downloading the official repository installer; continuing build without speed measurements." | tee -a "$report"
+          # Install the official Packagecloud .deb directly. This avoids APT
+          # distribution metadata (the Ubuntu Noble Release URL returned 404).
+          speedtest_version="1.2.0.84-1.ea6b6773cf"
+          deb_arch="$(dpkg --print-architecture)"
+          case "$deb_arch" in
+            amd64)
+              ookla_arch="amd64"
+              expected_sha256="35e084567a6388631fb10cf01e5e0d6b57a67d34ede2b72ba111b3d9164c8b94"
+              ;;
+            arm64)
+              ookla_arch="arm64"
+              expected_sha256="98e7de9db3bf181d08bc67e647bcfc71349c8014e387289c08e54e5c55d82f37"
+              ;;
+            armhf)
+              ookla_arch="armhf"
+              expected_sha256="f00c46b4945e3e1fea08e4858db78c9d8f3e35a8c9daa4c033df7eb03931294d"
+              ;;
+            i386)
+              ookla_arch="i386"
+              expected_sha256="dbd946d2cf174507e0efc8baa576aba366ca4e0b523276c287f0753df058faa5"
+              ;;
+            *)
+              echo "No pinned official Ookla .deb/checksum for dpkg architecture '$deb_arch'; skipping Speedtest safely." | tee -a "$report"
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+          esac
+
+          package_name="speedtest_${speedtest_version}_${ookla_arch}.deb"
+          package_url="https://packagecloud.io/ookla/speedtest-cli/packages/debian/bookworm/${package_name}/download.deb?distro_version_id=215"
+          package_file="$RUNNER_TEMP/$package_name"
+          echo "Downloading official Ookla package for architecture $ookla_arch..."
+          if ! curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --output "$package_file" "$package_url"; then
+            echo "Speedtest .deb download failed; continuing build without speed measurements." | tee -a "$report"
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # Packagecloud currently publishes the Ookla Ubuntu package for Jammy,
-          # while the GitHub-hosted Ubuntu 24.04 runner is detected as Noble.
-          # Avoid leaving a known-broken Noble source entry and force the published Jammy repo.
-          sudo rm -f /etc/apt/sources.list.d/ookla_speedtest-cli.list
-          echo "Runner is Ubuntu Noble; configuring Ookla's published Ubuntu Jammy package channel."
-          if ! sudo env os=ubuntu dist=jammy bash "$RUNNER_TEMP/ookla-speedtest-repo.sh"; then
-            echo "Speedtest setup failed while configuring the Ubuntu Jammy package repository; continuing build without speed measurements." | tee -a "$report"
+
+          actual_sha256="$(sha256sum "$package_file" | awk '{print $1}')"
+          if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+            echo "Speedtest .deb SHA-256 mismatch; refusing to install it. Expected $expected_sha256, got $actual_sha256." | tee -a "$report"
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if ! sudo apt-get update; then
-            echo "Speedtest package index refresh failed; continuing build without speed measurements." | tee -a "$report"
-            cat "$report" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          speedtest_candidate="$(apt-cache policy speedtest 2>/dev/null | awk '/Candidate:/ {print $2}')"
-          echo "Ookla Speedtest package candidate: ${speedtest_candidate:-none}" | tee -a "$report"
-          if [[ -z "$speedtest_candidate" || "$speedtest_candidate" == "(none)" ]]; then
-            echo "No installable Ookla Speedtest package candidate is available; continuing build without speed measurements." | tee -a "$report"
-            cat "$report" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          if ! sudo apt-get install -y speedtest; then
-            echo "Speedtest CLI installation failed; continuing build without speed measurements." | tee -a "$report"
+          echo "Package SHA-256 verified: $actual_sha256" | tee -a "$report"
+
+          if ! sudo apt-get install -y "$package_file"; then
+            echo "Speedtest .deb installation failed; continuing build without speed measurements." | tee -a "$report"
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -776,7 +796,7 @@ jobs:
               cat "$error_log" | tee -a "$report"
             fi
           else
-            python3 - "$result_json" <<'PY' >> "$report" || echo "Speedtest JSON parsing failed; continuing build without parsed measurements." | tee -a "$report"
+            if ! python3 - "$result_json" >> "$report" <<'PY'
           import json
           import sys
 
@@ -799,6 +819,9 @@ jobs:
           if result:
               print(f"Result URL: {result}")
           PY
+            then
+              echo "Speedtest JSON parsing failed; continuing build without parsed measurements." | tee -a "$report"
+            fi
           fi
           echo
           cat "$report"
