@@ -13,7 +13,10 @@ function extension_prepare_config__dbai_proxmox_community() {
 function post_repo_customize_image__dbai_install_proxmox_community() {
 	display_alert "Adding PXVIRT 8 community repository for Debian Bookworm" "${EXTENSION}" "info"
 
-	run_host_command_logged install -m 0755 -d "${SDCARD}/usr/share/keyrings" "${SDCARD}/etc/apt/preferences.d" "${SDCARD}/tmp"
+	run_host_command_logged install -m 0755 -d "${SDCARD}/usr/share/keyrings" "${SDCARD}/etc/apt/preferences.d"
+	# APT drops privileges to _apt and requires /tmp to be world-writable with the sticky bit (01777).
+	run_host_command_logged install -m 1777 -d "${SDCARD}/tmp"
+	run_host_command_logged chmod 1777 "${SDCARD}/tmp"
 
 	# The primary mirror returned HTTP 403 in GitHub Actions. Prefer the documented
 	# US mirror, then try the JP and primary mirrors. Use the same mirror for both
