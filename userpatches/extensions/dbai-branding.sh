@@ -12,8 +12,8 @@ function post_family_tweaks__500_dbai_os_release() {
 	# image revision. Replace only the two display-name fields; preserve NAME,
 	# VERSION_ID, VERSION, VERSION_CODENAME, ID, and URL fields from Debian.
 	for key in PRETTY_NAME ARMBIAN_PRETTY_NAME; do
-		if grep -q "^\${key}=" "${os_release}"; then
-			sed -i "s|^\${key}=.*|\${key}=\"${pretty_name}\"|" "${os_release}"
+		if grep -q "^${key}=" "${os_release}"; then
+			sed -i "s|^${key}=.*|${key}=\"${pretty_name}\"|" "${os_release}"
 		else
 			printf '%s="%s"\n' "${key}" "${pretty_name}" >> "${os_release}"
 		fi
