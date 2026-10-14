@@ -271,7 +271,23 @@ case "${1:-}" in
 		as_hermes_config() {
 			runuser --user dbai-hermes -- env HOME="$HERMES_HOME" PATH="$HERMES_HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" "$HERMES_BIN" config set "$1" "$2" >/dev/null
 		}
-		as_hermes_config "DBAI_9ROUTER_API_KEY" "$api_key"
+		# Send the secret over stdin rather than exposing it in a process argument list.
+		if ! printf '%s' "$api_key" | runuser --user dbai-hermes -- env HOME="$HERMES_HOME" python3 -c '
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+key = sys.stdin.read().strip()
+if not re.fullmatch(r"[A-Za-z0-9_.-]{8,512}", key):
+    raise SystemExit("API key has an unsupported format.")
+path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+lines = [line for line in lines if not line.startswith("DBAI_9ROUTER_API_KEY=")]
+lines.append("DBAI_9ROUTER_API_KEY=" + key)
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+path.chmod(0o600)
+' "$HERMES_HOME/.hermes/.env"; then
+			echo "Could not store the API key in Hermes' private environment file." >&2
+			exit 1
+		fi
 		as_hermes_config "providers.dbai-9router.api" "http://127.0.0.1:20128/v1"
 		as_hermes_config "providers.dbai-9router.key_env" "DBAI_9ROUTER_API_KEY"
 		as_hermes_config "model.provider" "custom:dbai-9router"
