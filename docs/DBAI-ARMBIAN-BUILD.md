@@ -75,6 +75,9 @@ Input utama:
 - **Pilihan aplikasi:** Home Assistant, OpenMediaVault, Kali, dan Docker CE; matriks membatasi setiap aplikasi pada release yang dikonfigurasi kompatibel.
 - **Pilihan desktop:** XFCE, MATE, GNOME, Cinnamon, KDE Plasma, LXQt, i3-wm, Enlightenment, Budgie, dan Openbox standalone sesuai dukungan yang tercantum di matriks.
 - **Speedtest:** checkbox opsional dengan default tidak dicentang.
+- **Proxmox VE Official:** opsional; memakai paket resmi Proxmox VE 9 dari repositori no-subscription pada Debian Trixie, sambil mempertahankan kernel/DTB Armbian. Ini bukan sertifikasi dukungan resmi Proxmox untuk STB Amlogic berbasis U-Boot/device tree.
+- **Proxmox Community:** opsional; memakai PXVIRT 8 (penerus proyek Proxmox-Port) dari repositori komunitas pada Debian Bookworm. Kernel/DTB Armbian dipertahankan.
+- Kedua pilihan Proxmox terpisah dan tidak dipengaruhi **OS group** umum: Official selalu memakai Trixie, Community selalu memakai Bookworm. Filesystem mengikuti pilihan run, dan image berukuran 12.288 MiB agar masuk akal untuk media nominal 16 GB.
 - **Cleanup run history:** operasi penghapusan riwayat Actions yang terpisah dan memerlukan konfirmasi eksplisit `DELETE ALL RUN HISTORY`. Jangan mengaktifkannya bila yang diinginkan adalah build image.
 
 Matriks menolak kombinasi duplikat dan menolak lebih dari batas 256 job GitHub Actions. Default saat semua grup profil dan semua filesystem dipilih menghasilkan 166 job, sesuai pemeriksaan konsistensi yang ditanam dalam workflow. Jumlah job dapat berbeda bila input run diubah.
@@ -134,6 +137,30 @@ Jika hasil tidak dikompresi, ekstensi akhirnya `.img`. Contoh untuk Bullseye:
 - `aml-s9xx-box-btrfs-bullseye-minimal.img.xz`
 
 Nama asset memang tidak menyertakan versi; metadata versi di dalam image adalah `26.11.0`. Judul GitHub Release tetap mencerminkan profil terpilih serta waktu mulai build dalam zona waktu Asia/Jakarta. Tag release dibuat per workflow run.
+
+### Varian Proxmox
+
+Dua checkbox tersedia di **Actions → DBAI Armbian Build → Run workflow**:
+
+| Menu | Basis | Paket | Ukuran image |
+|---|---|---|---:|
+| Proxmox VE Official | Debian Trixie | Paket resmi PVE 9 dari `download.proxmox.com`, kernel Armbian dipertahankan | 12.288 MiB |
+| Proxmox Community | Debian Bookworm | PXVIRT 8 dari repositori komunitas, kernel Armbian dipertahankan | 12.288 MiB |
+
+Contoh nama output:
+
+- `aml-s9xx-box-ext4-trixie-proxmox-official.img.xz`
+- `aml-s9xx-box-btrfs-trixie-proxmox-official.img.xz`
+- `aml-s9xx-box-ext4-bookworm-proxmox-community.img.xz`
+- `aml-s9xx-box-btrfs-bookworm-proxmox-community.img.xz`
+
+Repositori Official menggunakan keyring resmi Trixie dan komponen `pve-no-subscription`. Repositori Community memakai keyring Lierfang dan komponen PXVIRT 8 `bookworm main`. Keduanya sengaja tidak memasang meta-package/kernel Proxmox; ini menjaga kernel dan DTB yang membuat STB bisa boot. Karena itu kernel updates serta dukungan modul kernel akan tetap mengikuti Armbian. Fitur ZFS/DKMS tidak dipasang otomatis; konfigurasi bridge jaringan dan storage guest dilakukan setelah boot.
+
+Sebuah systemd one-shot mengatur pemetaan hostname ke alamat IPv4 LAN saat boot pertama sebelum layanan utama Proxmox/PXVIRT berjalan. Ini membantu layanan web dan cluster menemukan alamat host, tetapi pengguna tetap harus memastikan DHCP/static IP dan hostname sesuai jaringan.
+
+**Batas kompatibilitas:** “Official” merujuk sumber paket resmi PVE 9, bukan berarti platform Amlogic STB disertifikasi upstream. Dokumentasi Proxmox saat ini mensyaratkan platform ARM64 yang boot melalui UEFI dan menjelaskan hardware berbasis device tree saja sebagai tidak didukung secara resmi. Maka image Official di sini adalah jalur eksperimen memakai paket resmi pada kernel Armbian. PXVIRT 8 adalah port/fork komunitas untuk ARM64 dan mempublikasikan panduan pemasangan di Armbian Bookworm; kompatibilitas tiap model STB tetap perlu diuji. Referensi: [Proxmox pada Armbian](https://docs.armbian.com/software/proxmox-ve/), [PXVIRT: install dari Debian/Armbian](https://docs.pxvirt.lierfang.com/en/installfromdebian), [PXVIRT repository documentation](https://docs.pxvirt.lierfang.com/en/repo).
+
+**Status validasi:** integrasi ini statis dan belum diuji pada workflow runtime. Run pertama sebaiknya memilih satu checkbox, satu filesystem, dan hanya satu varian Proxmox; setelah image selesai, uji web UI di `https://IP-STB:8006`, LXC, dan `/dev/kvm` bila tersedia.
 
 File checksum per image digunakan saat upload. Pada akhir run, job finalisasi menyusun `SHA256SUMS.txt`; sidecar checksum individual dihapus setelah checksum gabungan berhasil diunggah. Image lokal di runner dihapus setelah upload berhasil, sedangkan asset pada GitHub Release tetap ada.
 
