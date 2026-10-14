@@ -24,7 +24,7 @@ Untuk menghindari perubahan perilaku board lain, pengecualian dibatasi pada komb
 
 Pada kombinasi ini, builder sekarang menggunakan tipe MBR `0x0C` untuk partisi boot, agar sesuai dengan layout FAT yang diharapkan dan bisa dikenali Windows. Layout GPT dan tipe partisi untuk board lain tetap menggunakan aturan generik Armbian.
 
-Perubahan ini **hanya mengubah tipe partisi dalam tabel MBR**. Cara memformat partisi boot, ukuran partisi, konfigurasi rootfs ext4/Btrfs, kernel, DTB, dan boot script tidak diubah oleh perbaikan tersebut.
+Perbaikan ini mengatur dua hal yang harus konsisten: tabel MBR memakai tipe `0x0C`, dan partisi boot board ini secara eksplisit diformat dengan `mkfs.vfat -F32`. Jadi isi partisi boot benar-benar FAT32, bukan hanya diberi label tipe FAT32-LBA di tabel partisi. Ukuran partisi 256 MiB, konfigurasi rootfs ext4/Btrfs, kernel, DTB, dan boot script tidak diubah.
 
 ## Cara memverifikasi image hasil build
 
