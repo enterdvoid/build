@@ -186,6 +186,10 @@ jobs:
           grep -Fq 'REQUIRE_API_KEY=true' extensions/ai-stack-common.sh
           grep -Fq 'https://hermes-agent.nousresearch.com/install.sh' extensions/ai-stack-common.sh
           grep -Fq 'bash "$INSTALLER" --non-interactive --skip-browser' extensions/ai-stack-common.sh
+          grep -Fq 'xz-utils' extensions/ai-stack-common.sh
+          grep -Fq "unauthenticated /v1/models returned HTTP 200" extensions/ai-stack-common.sh
+          grep -Fq 'decolua/9router/issues/2834' docs/AI-STACK-FIRMWARE.md
+          grep -Fq 'bash "$INSTALLER" --non-interactive --skip-browser' extensions/ai-stack-common.sh
           grep -Fq 'providers.dbai-9router.api' extensions/ai-stack-common.sh
           grep -Fq 'api_key" | runuser --user dbai-hermes' extensions/ai-stack-common.sh
           grep -Fq 'sudo dbai-ai-setup --connect-hermes' docs/AI-STACK-FIRMWARE.md
