@@ -1,0 +1,190 @@
+name: DBAI AI Stack Validation
+
+on:
+  push:
+    paths:
+      - ".github/workflows/armbian-build.yml"
+      - ".github/workflows/ai-stack-validation.yml"
+      - "extensions/ai-*.sh"
+      - "docs/AI-STACK-FIRMWARE.md"
+  pull_request:
+    paths:
+      - ".github/workflows/armbian-build.yml"
+      - ".github/workflows/ai-stack-validation.yml"
+      - "extensions/ai-*.sh"
+      - "docs/AI-STACK-FIRMWARE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-ai-stack:
+    name: Validate AI extension syntax and build presets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in extensions/ai-stack-common.sh extensions/ai-hermes.sh extensions/ai-router9.sh extensions/ai-hermes-router9.sh; do
+            test -s "$file"
+            bash -n "$file"
+            echo "Shell syntax OK: $file"
+          done
+
+      - name: Test workflow matrix presets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast
+          import json
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+          import tempfile
+          import textwrap
+
+          workflow_path = pathlib.Path(".github/workflows/armbian-build.yml")
+          workflow = workflow_path.read_text(encoding="utf-8")
+
+          # GitHub workflow_dispatch is limited to 25 inputs.
+          inputs_block = workflow.split("    inputs:\n", 1)[1].split("\npermissions:", 1)[0]
+          input_names = re.findall(r"^      ([a-z][a-z0-9_]*):\s*$", inputs_block, re.MULTILINE)
+          if len(input_names) != 25:
+              raise SystemExit(f"Expected 25 workflow inputs, found {len(input_names)}.")
+          if len(input_names) != len(set(input_names)):
+              raise SystemExit("Duplicate workflow_dispatch input names found.")
+
+          app_block = inputs_block.split("      applications:\n", 1)[1].split("\n      home_assistant:", 1)[0]
+          for expected in ("type: choice", "default: all", "- all", "- none", "- hermes", "- 9router", "- both"):
+              if expected not in app_block:
+                  raise SystemExit(f"Application selector is missing {expected!r}.")
+
+          generator_match = re.search(
+              r"(?ms)^ {10}python3 - <<'PY' >> \"\$GITHUB_OUTPUT\"\n(.*?)^ {10}PY$",
+              workflow,
+          )
+          if not generator_match:
+              raise SystemExit("Could not locate the workflow matrix generator.")
+          generator = textwrap.dedent(generator_match.group(1))
+          ast.parse(generator, filename="workflow-matrix-generator.py")
+
+          for mode in ("none", "hermes", "9router", "both", "all"):
+              with tempfile.TemporaryDirectory() as tmp:
+                  output_path = pathlib.Path(tmp) / "github-output.txt"
+                  summary_path = pathlib.Path(tmp) / "summary.md"
+                  env = os.environ.copy()
+                  env.update({
+                      "FILESYSTEM_INPUT": "both",
+                      "OS_GROUP_INPUT": "all",
+                      "SERVER": "true",
+                      "MINIMAL": "true",
+                      "APPLICATIONS": mode,
+                      "HOME_ASSISTANT": "false",
+                      "OPENMEDIAVAULT": "false",
+                      "KALI": "false",
+                      "DOCKER_CE": "false",
+                      "CASAOS": "false",
+                      "CCTV_LIGHTNVR": "false",
+                      "DESKTOP_MODE": "none",
+                      "DESKTOP_XFCE": "false",
+                      "DESKTOP_MATE": "false",
+                      "DESKTOP_GNOME": "false",
+                      "DESKTOP_CINNAMON": "false",
+                      "DESKTOP_KDE_PLASMA": "false",
+                      "DESKTOP_I3_WM": "false",
+                      "DESKTOP_ENLIGHTENMENT": "false",
+                      "DESKTOP_BUDGIE": "false",
+                      "DESKTOP_LXQT": "false",
+                      "PROXMOX_MODE": "none",
+                      "GITHUB_OUTPUT": str(output_path),
+                      "GITHUB_STEP_SUMMARY": str(summary_path),
+                  })
+                  run = subprocess.run(
+                      [sys.executable, "-c", generator],
+                      env=env,
+                      text=True,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE,
+                      check=False,
+                  )
+                  if run.returncode:
+                      raise SystemExit(f"Matrix generation failed for preset {mode}:\n{run.stderr}\n{run.stdout}")
+                  output_path.write_text(run.stdout, encoding="utf-8")
+                  output_text = output_path.read_text(encoding="utf-8")
+                  matrix_line = next((line for line in output_text.splitlines() if line.startswith("matrix=")), None)
+                  if not matrix_line:
+                      raise SystemExit(f"Matrix JSON missing for preset {mode}. Output: {output_text[:500]}")
+                  matrix = json.loads(matrix_line[len("matrix="):])["include"]
+                  variants = {row["variant"] for row in matrix}
+                  ai_expected = {
+                      "none": set(),
+                      "hermes": {"hermes-agent"},
+                      "9router": {"9router"},
+                      "both": {"hermes-9router"},
+                      "all": {"hermes-agent", "9router", "hermes-9router"},
+                  }[mode]
+                  ai_actual = variants & {"hermes-agent", "9router", "hermes-9router"}
+                  if ai_actual != ai_expected:
+                      raise SystemExit(f"Preset {mode} generated AI variants {sorted(ai_actual)}, expected {sorted(ai_expected)}.")
+                  if any(row["profile"] == "desktop" for row in matrix):
+                      raise SystemExit(f"Desktop mode none incorrectly generated desktop jobs for preset {mode}.")
+                  if any(row["release"] not in {"bookworm", "trixie", "jammy", "noble", "resolute"} for row in matrix if row["variant"] in {"hermes-agent", "9router", "hermes-9router"}):
+                      raise SystemExit(f"An unsupported OS release was scheduled for the AI stack preset {mode}.")
+                  if any(row["image_size"] != 8192 for row in matrix if row["variant"] in {"hermes-agent", "9router", "hermes-9router"}):
+                      raise SystemExit(f"An AI stack image did not use the 8192 MiB image target for preset {mode}.")
+                  print(f"Matrix preset {mode}: {len(matrix)} jobs; AI variants={sorted(ai_actual)}")
+
+          # Explicitly test the largest full matrix and its regression guard (198 jobs).
+          with tempfile.TemporaryDirectory() as tmp:
+              output_path = pathlib.Path(tmp) / "github-output.txt"
+              summary_path = pathlib.Path(tmp) / "summary.md"
+              env = os.environ.copy()
+              env.update({
+                  "FILESYSTEM_INPUT": "both",
+                  "OS_GROUP_INPUT": "all",
+                  "SERVER": "true",
+                  "MINIMAL": "true",
+                  "APPLICATIONS": "all",
+                  "DESKTOP_MODE": "all",
+                  "PROXMOX_MODE": "none",
+                  "GITHUB_OUTPUT": str(output_path),
+                  "GITHUB_STEP_SUMMARY": str(summary_path),
+              })
+              for name in ("HOME_ASSISTANT", "OPENMEDIAVAULT", "KALI", "DOCKER_CE", "CASAOS", "CCTV_LIGHTNVR",
+                           "DESKTOP_XFCE", "DESKTOP_MATE", "DESKTOP_GNOME", "DESKTOP_CINNAMON",
+                           "DESKTOP_KDE_PLASMA", "DESKTOP_I3_WM", "DESKTOP_ENLIGHTENMENT", "DESKTOP_BUDGIE", "DESKTOP_LXQT"):
+                  env[name] = "false"
+              run = subprocess.run([sys.executable, "-c", generator], env=env, text=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+              if run.returncode:
+                  raise SystemExit(f"Full matrix regression test failed:\n{run.stderr}\n{run.stdout}")
+              output_path.write_text(run.stdout, encoding="utf-8")
+              matrix_line = next((line for line in output_path.read_text(encoding="utf-8").splitlines() if line.startswith("matrix=")), None)
+              matrix = json.loads(matrix_line[len("matrix="):])["include"]
+              if len(matrix) != 198:
+                  raise SystemExit(f"Full matrix expected 198 jobs without Proxmox; got {len(matrix)}.")
+              print("Full matrix regression check passed: 198 jobs without Proxmox.")
+
+      - name: Verify installation and secret-handling safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'ghcr.io/decolua/9router:latest' extensions/ai-stack-common.sh
+          grep -Fq 'chmod 0600 "$ROUTER_ENV"' extensions/ai-stack-common.sh
+          grep -Fq 'API_KEY_SECRET="$(openssl rand -hex 32)"' extensions/ai-stack-common.sh
+          grep -Fq 'MACHINE_ID_SALT="$(openssl rand -hex 32)"' extensions/ai-stack-common.sh
+          grep -Fq 'REQUIRE_API_KEY=true' extensions/ai-stack-common.sh
+          grep -Fq 'https://hermes-agent.nousresearch.com/install.sh' extensions/ai-stack-common.sh
+          grep -Fq 'providers.dbai-9router.api' extensions/ai-stack-common.sh
+          grep -Fq 'printf '''%s''' "$api_key" | runuser' extensions/ai-stack-common.sh
+          grep -Fq 'sudo dbai-ai-setup --connect-hermes' docs/AI-STACK-FIRMWARE.md
+          echo "AI setup, persistence, API authentication, and secret-handling checks passed."
