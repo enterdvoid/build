@@ -1161,6 +1161,74 @@ jobs:
           fi
           image="${images[0]}"
 
+          # Verify the boot partition before publishing any image. The generic
+          # Armbian XBOOTLDR code (0xEA) used to make Windows hide this board's
+          # FAT boot partition; aml-s9xx-box must expose it as FAT32-LBA (0x0C).
+          temp_raw=""
+          loopdev=""
+          cleanup_image_validation() {
+            if [[ -n "$loopdev" ]]; then
+              sudo losetup -d "$loopdev" >/dev/null 2>&1 || true
+            fi
+            if [[ -n "$temp_raw" ]]; then
+              rm -f -- "$temp_raw"
+            fi
+          }
+          trap cleanup_image_validation EXIT
+
+          if [[ "$image" == *.img.xz ]]; then
+            temp_raw="$(mktemp "$RUNNER_TEMP/dbai-verify.XXXXXX.img")"
+            echo "Decompressing image temporarily for partition-table QA..."
+            xz --decompress --stdout -- "$image" > "$temp_raw"
+            raw_image="$temp_raw"
+          else
+            raw_image="$image"
+          fi
+
+          partition_table_json="$(sfdisk --json "$raw_image")"
+          boot_type="$(printf '%s' "$partition_table_json" | python3 -c '
+          import json, sys
+          table = json.load(sys.stdin)["partitiontable"]
+          if table.get("label") not in {"dos", "msdos"}:
+              raise SystemExit(f"Expected MBR/DOS partition table, got {table.get('label')!r}")
+          partitions = table.get("partitions", [])
+          if not partitions:
+              raise SystemExit("The image has no partitions.")
+          print(str(partitions[0].get("type", "")).lower().removeprefix("0x"))
+          ')"
+          if [[ "$boot_type" != "c" && "$boot_type" != "0c" ]]; then
+            echo "::error::Boot partition has MBR type '$boot_type'; expected 0x0C (FAT32-LBA)."
+            sfdisk --dump "$raw_image" || true
+            exit 1
+          fi
+          echo "MBR boot partition type verified: 0x0C (FAT32-LBA)."
+
+          loopdev="$(sudo losetup --find --show --partscan "$raw_image")"
+          sudo udevadm settle
+          boot_partition="${loopdev}p1"
+          for attempt in {1..20}; do
+            [[ -b "$boot_partition" ]] && break
+            sleep 1
+          done
+          if [[ ! -b "$boot_partition" ]]; then
+            echo "::error::Could not expose boot partition device ${boot_partition} for filesystem validation."
+            exit 1
+          fi
+          boot_fs="$(sudo blkid -s TYPE -o value "$boot_partition" || true)"
+          if [[ "$boot_fs" != "vfat" ]]; then
+            echo "::error::Boot partition filesystem is '$boot_fs'; expected FAT/vfat for Windows accessibility."
+            sudo blkid "$boot_partition" || true
+            exit 1
+          fi
+          echo "Boot filesystem verified: $boot_fs"
+          echo "Image partition QA passed. This check validates the partition table and FAT filesystem; it is not a full device boot test."
+          {
+            echo "### Image partition QA"
+            echo "- MBR boot partition type: `0x0C` (FAT32-LBA)"
+            echo "- Boot filesystem detected by blkid: `$boot_fs`"
+            echo "- QA passed for `$asset` after asset naming below."
+          } >> "$GITHUB_STEP_SUMMARY"
+
           if [[ "$image" == *.img.xz ]]; then
             suffix="img.xz"
           else
