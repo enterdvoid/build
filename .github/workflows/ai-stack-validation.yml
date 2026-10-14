@@ -91,7 +91,7 @@ jobs:
               raise SystemExit("Duplicate workflow_dispatch input names found.")
 
           app_block = inputs_block.split("      applications:\n", 1)[1].split("\n      home_assistant:", 1)[0]
-          for expected in ("type: choice", "default: all", "- all", "- none", "- hermes", "- 9router", "- both"):
+          for expected in ("type: choice", "default: all", "- all", "- ai-all", "- none", "- hermes", "- 9router", "- both"):
               if expected not in app_block:
                   raise SystemExit(f"Application selector is missing {expected!r}.")
 
@@ -104,7 +104,7 @@ jobs:
           generator = textwrap.dedent(generator_match.group(1))
           ast.parse(generator, filename="workflow-matrix-generator.py")
 
-          for mode in ("none", "hermes", "9router", "both", "all"):
+          for mode in ("none", "hermes", "9router", "both", "ai-all", "all"):
               with tempfile.TemporaryDirectory() as tmp:
                   output_path = pathlib.Path(tmp) / "github-output.txt"
                   summary_path = pathlib.Path(tmp) / "summary.md"
@@ -157,6 +157,7 @@ jobs:
                       "hermes": {"hermes-agent"},
                       "9router": {"9router"},
                       "both": {"hermes-9router"},
+                      "ai-all": {"hermes-agent", "9router", "hermes-9router"},
                       "all": {"hermes-agent", "9router", "hermes-9router"},
                   }[mode]
                   ai_actual = variants & {"hermes-agent", "9router", "hermes-9router"}
