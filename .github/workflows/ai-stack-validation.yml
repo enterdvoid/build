@@ -91,9 +91,28 @@ jobs:
               raise SystemExit("Duplicate workflow_dispatch input names found.")
 
           app_block = inputs_block.split("      applications:\n", 1)[1].split("\n      home_assistant:", 1)[0]
-          for expected in ("type: choice", "default: all", "- all", "- ai-all", "- none", "- hermes", "- 9router", "- both"):
+          expected_choices = (
+              "type: choice",
+              'default: "all — Semua aplikasi standar + 3 varian AI"',
+              '- "all — Semua aplikasi standar + 3 varian AI"',
+              '- "ai-all — 3 varian AI + aplikasi yang dicentang"',
+              '- "none — Hanya aplikasi yang dicentang (tanpa preset AI)"',
+              '- "hermes — Hermes + aplikasi yang dicentang"',
+              '- "9router — 9Router + aplikasi yang dicentang"',
+              '- "both — Hermes + 9Router (satu image) + aplikasi yang dicentang"',
+          )
+          for expected in expected_choices:
               if expected not in app_block:
                   raise SystemExit(f"Application selector is missing {expected!r}.")
+
+          choice_labels = {
+              "all": "all — Semua aplikasi standar + 3 varian AI",
+              "ai-all": "ai-all — 3 varian AI + aplikasi yang dicentang",
+              "none": "none — Hanya aplikasi yang dicentang (tanpa preset AI)",
+              "hermes": "hermes — Hermes + aplikasi yang dicentang",
+              "9router": "9router — 9Router + aplikasi yang dicentang",
+              "both": "both — Hermes + 9Router (satu image) + aplikasi yang dicentang",
+          }
 
           generator_match = re.search(
               r"(?ms)^ {10}python3 - <<'PY' >> \"\$GITHUB_OUTPUT\"\n(.*?)^ {10}PY$",
@@ -114,7 +133,7 @@ jobs:
                       "OS_GROUP_INPUT": "all",
                       "SERVER": "true",
                       "MINIMAL": "true",
-                      "APPLICATIONS": mode,
+                      "APPLICATIONS": choice_labels[mode],
                       "HOME_ASSISTANT": "false",
                       "OPENMEDIAVAULT": "false",
                       "KALI": "false",
