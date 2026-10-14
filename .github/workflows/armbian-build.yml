@@ -28,6 +28,11 @@ on:
           - jammy
           - noble
           - resolute
+      speedtest:
+        description: "Jalankan Ookla Speedtest setelah pengecekan spesifikasi VM (per job build)"
+        required: true
+        type: boolean
+        default: false
       cleanup_run_history:
         description: "HAPUS permanen seluruh riwayat workflow run di repository (tidak membangun image)"
         required: true
@@ -364,11 +369,13 @@ jobs:
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
           DESKTOP: ${{ inputs.desktop }}
+          SPEEDTEST: ${{ inputs.speedtest }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop=$DESKTOP"
           echo "Openbox WM checkbox: ${{ inputs.desktop_openbox }} (also included whenever desktop=all)"
+          echo "VM Speedtest enabled: $SPEEDTEST"
           echo "Build matrix generated."
 
   create_release:
@@ -395,6 +402,7 @@ jobs:
           set -euo pipefail
           test -x ./compile.sh || { echo "::error::compile.sh is missing or not executable."; exit 1; }
           test -f config/boards/aml-s9xx-box.tvb || { echo "::error::config/boards/aml-s9xx-box.tvb is missing."; exit 1; }
+          test -f userpatches/extensions/dbai-branding.sh || { echo "::error::userpatches/extensions/dbai-branding.sh is missing."; exit 1; }
           python3 - <<'PY'
           import json, os, pathlib
           matrix = json.loads(os.environ["MATRIX_JSON"])
@@ -433,6 +441,7 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
           FILESYSTEM_INPUT: ${{ inputs.filesystem }}
           OS_GROUP_INPUT: ${{ inputs.os_group }}
+          SPEEDTEST: ${{ inputs.speedtest }}
           MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
@@ -460,7 +469,7 @@ jobs:
             exit 1
           fi
           stamp="$(TZ=Asia/Jakarta date -d "$run_started_at" +'%Y-%m-%d_%H-%M')"
-          image_version="$(TZ=Asia/Jakarta date -d "$run_started_at" +'%Y.%m.%d').${RUN_NUMBER}"
+          image_version="26.11.0"
           echo "Workflow start time: ${run_started_at} -> ${stamp} (Asia/Jakarta)"
           echo "DBAI image/package version: ${image_version}"
           tag="dbai-armbian-build-${RUN_ID}"
@@ -506,6 +515,9 @@ jobs:
             echo
             echo "- **OS release group:** ${OS_GROUP_INPUT}"
             echo "- **Filesystem target:** ${FILESYSTEM_INPUT}"
+            echo "- **Embedded image version:** ${image_version}"
+            echo "- **OS branding:** `Armbian-DBAI-2K26` / `DBAI-2K26 <release>`"
+            echo "- **VM Speedtest:** ${SPEEDTEST} (one test per build job when enabled)"
             echo "- **Selected profile groups:** ${category_title}"
             echo "- **Matrix jobs:** $(python3 -c 'import json,os; print(len(json.loads(os.environ["MATRIX_JSON"]).get("include", [])))')"
             echo "- **Image asset format:** `aml-s9xx-box-{filesystem}-{os-release}-{variant}.img.xz` (or `.img`)"
@@ -705,6 +717,76 @@ jobs:
           docker system df || true
           echo "=========================================================="
 
+      - name: Ookla Speedtest (optional)
+        if: inputs.speedtest == true
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -u
+          report="$RUNNER_TEMP/dbai-speedtest.txt"
+          error_log="$RUNNER_TEMP/dbai-speedtest-error.txt"
+          result_json="$RUNNER_TEMP/dbai-speedtest-result.json"
+          {
+            echo "=== DBAI VM Network Speedtest ==="
+            echo "Timestamp: $(date -Is)"
+            echo "Runner: $(uname -n)"
+          } | tee "$report"
+
+          echo "Installing Ookla Speedtest CLI from its official Linux package repository..."
+          if ! curl -fsSL https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh -o "$RUNNER_TEMP/ookla-speedtest-repo.sh"; then
+            echo "Speedtest setup failed while downloading the official repository installer; continuing build without speed measurements." | tee -a "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! sudo bash "$RUNNER_TEMP/ookla-speedtest-repo.sh"; then
+            echo "Speedtest setup failed while configuring the package repository; continuing build without speed measurements." | tee -a "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! sudo apt-get install -y speedtest; then
+            echo "Speedtest CLI installation failed; continuing build without speed measurements." | tee -a "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          set +e
+          timeout 120s speedtest --accept-license --accept-gdpr --format=json > "$result_json" 2> "$error_log"
+          speedtest_status=$?
+          set -e
+          if [[ "$speedtest_status" -ne 0 ]]; then
+            echo "Speedtest could not complete (exit code $speedtest_status); this is non-fatal and the image build will continue." | tee -a "$report"
+            if [[ -s "$error_log" ]]; then
+              cat "$error_log" | tee -a "$report"
+            fi
+          else
+            python3 - "$result_json" <<'PY' >> "$report"
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as f:
+              data = json.load(f)
+
+          def mbps(section):
+              bandwidth = data.get(section, {}).get("bandwidth")
+              return "unavailable" if bandwidth is None else f"{float(bandwidth) * 8 / 1_000_000:.2f} Mbps"
+
+          ping = data.get("ping", {}).get("latency")
+          server = data.get("server", {})
+          print("Result: SUCCESS")
+          print(f"ISP: {data.get('isp', 'unavailable')}")
+          print(f"Server: {server.get('name', 'unknown')} ({server.get('location', 'unknown')}, {server.get('country', 'unknown')})")
+          print(f"Latency: {ping:.2f} ms" if isinstance(ping, (int, float)) else "Latency: unavailable")
+          print(f"Download: {mbps('download')}")
+          print(f"Upload: {mbps('upload')}")
+          result = data.get("result", {}).get("url")
+          if result:
+              print(f"Result URL: {result}")
+          PY
+          fi
+          echo
+          cat "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Ensure custom extension directory exists
         shell: bash
         run: |
@@ -797,7 +879,9 @@ jobs:
             "KERNEL_CONFIGURE=no"
           )
           if [[ -n "$EXTENSION" ]]; then
-            args+=("ENABLE_EXTENSIONS=${EXTENSION}")
+              args+=("ENABLE_EXTENSIONS=dbai-branding,${EXTENSION}")
+          else
+            args+=("ENABLE_EXTENSIONS=dbai-branding")
           fi
           if [[ "$PROFILE" == "desktop" && -z "$EXTENSION" ]]; then
             args+=("DESKTOP_ENVIRONMENT=${DESKTOP_ENV}" "DESKTOP_TIER=minimal")
@@ -894,6 +978,7 @@ jobs:
             build-${{ matrix.filesystem }}-${{ matrix.profile }}-${{ matrix.variant }}-${{ matrix.release }}.log
             output/logs/*.log.ans
             ${{ runner.temp }}/dbai-after-build-report.txt
+            ${{ runner.temp }}/dbai-speedtest.txt
           if-no-files-found: ignore
           retention-days: 7
 
