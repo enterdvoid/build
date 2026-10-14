@@ -1,4 +1,4 @@
-name: DBAI AI Stack Validation
+name: DBAI Firmware Validation
 
 on:
   push:
@@ -6,13 +6,21 @@ on:
       - ".github/workflows/armbian-build.yml"
       - ".github/workflows/ai-stack-validation.yml"
       - "extensions/ai-*.sh"
+      - "lib/functions/image/partitioning.sh"
+      - "config/boards/aml-s9xx-box.tvb"
       - "docs/AI-STACK-FIRMWARE.md"
+      - "docs/IMAGE-PARTITIONS-WINDOWS.md"
+      - "README.md"
   pull_request:
     paths:
       - ".github/workflows/armbian-build.yml"
       - ".github/workflows/ai-stack-validation.yml"
       - "extensions/ai-*.sh"
+      - "lib/functions/image/partitioning.sh"
+      - "config/boards/aml-s9xx-box.tvb"
       - "docs/AI-STACK-FIRMWARE.md"
+      - "docs/IMAGE-PARTITIONS-WINDOWS.md"
+      - "README.md"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +28,7 @@ permissions:
 
 jobs:
   validate-ai-stack:
-    name: Validate AI extension syntax and build presets
+    name: Validate AI extensions, presets and image partition layout
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -63,6 +71,34 @@ jobs:
                       raise SystemExit(f"Syntax check failed for generated {tag}:\n{result.stderr}")
                   print(f"Embedded script syntax OK: {tag}")
           PY
+
+      - name: Validate Windows-visible FAT boot partition
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n lib/functions/image/partitioning.sh
+          grep -Fq 'BOOTFS_TYPE="fat"' config/boards/aml-s9xx-box.tvb || {
+            echo "::error::aml-s9xx-box must retain the FAT boot filesystem."
+            exit 1
+          }
+          grep -Fq 'if [[ "$BOARD" == "aml-s9xx-box" && "$bootfs" == "fat" ]]; then' lib/functions/image/partitioning.sh || {
+            echo "::error::Amlogic FAT boot partition compatibility condition is missing."
+            exit 1
+          }
+          grep -Fq 'local type="0c"' lib/functions/image/partitioning.sh || {
+            echo "::error::Amlogic FAT boot partition must use MBR type 0x0C (FAT32-LBA)."
+            exit 1
+          }
+          grep -Fq 'local type="ea"' lib/functions/image/partitioning.sh || {
+            echo "::error::Generic Linux XBOOTLDR type must remain available for other boards."
+            exit 1
+          }
+          grep -Fq 'BC13C2FF-59E6-4262-A352-B275FD6F7172' lib/functions/image/partitioning.sh || {
+            echo "::error::Generic GPT XBOOTLDR type must remain unchanged."
+            exit 1
+          }
+          test -s docs/IMAGE-PARTITIONS-WINDOWS.md
+          echo "Partition regression checks passed: aml-s9xx-box FAT boot uses MBR type 0x0C; generic MBR/GPT behavior is preserved."
 
       - name: Test workflow matrix presets
         shell: bash
