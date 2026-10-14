@@ -95,7 +95,7 @@ on:
         description: "Desktop: semua DE + Openbox, Openbox saja, pilihan DE khusus, atau tanpa desktop"
         required: true
         type: choice
-        default: all
+        default: none
         options:
           - all
           - openbox
@@ -521,6 +521,18 @@ jobs:
             echo "::error::PXVIRT mirror must pass Release-file preflight before use."
             exit 1
           }
+          grep -Fq 'chmod 1777 "${SDCARD}/tmp"' extensions/proxmox-community.sh || {
+            echo "::error::PXVIRT extension must preserve standard /tmp permissions (01777) so APT's _apt user can verify repository signatures."
+            exit 1
+          }
+          grep -Fq 'MAINTAINERMAIL=dbai.media@gmail.com' .github/workflows/armbian-build.yml || {
+            echo "::error::Maintainer email must be dbai.media@gmail.com."
+            exit 1
+          }
+          if ! grep -A4 -F '      desktop_mode:' .github/workflows/armbian-build.yml | grep -Fq '        default: none'; then
+            echo "::error::Desktop selection must default to none."
+            exit 1
+          fi
           grep -Fq 'openbox_releases = {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}' .github/workflows/armbian-build.yml || {
             echo "::error::Openbox must not be scheduled for Bullseye; that release is limited to Server/Minimal."
             exit 1
@@ -529,7 +541,7 @@ jobs:
             echo "::error::Openbox must use network-manager-applet on Debian Forky."
             exit 1
           }
-          echo "Regression checks passed for Proxmox APT sources, PXVIRT mirror fallback and Openbox compatibility."
+          echo "Regression checks passed for Proxmox APT sources, PXVIRT /tmp permissions and mirror fallback, maintainer email, desktop default and Openbox compatibility."
       - name: Create one release with selected profile title
         id: release
         env:
@@ -1031,7 +1043,7 @@ jobs:
             "VENDORBUGS=https://github.com/armarchindo/build/issues"
             "VENDORLOGO=armbian-logo"
             "MAINTAINER=DBAI Armbian Project"
-            "MAINTAINERMAIL=noreply@github.com"
+            "MAINTAINERMAIL=dbai.media@gmail.com"
             "BOOTSIZE=256"
             "FIXED_IMAGE_SIZE=${IMAGE_SIZE}"
             "ROOTFS_TYPE=${FS}"
