@@ -87,9 +87,12 @@ Input workflow bernama `speedtest`:
 - Jika tidak dicentang (default), GitHub Actions melewati langkah Speedtest.
 - Pengujian dijalankan pada setiap job build matrix yang berjalan, bukan satu kali untuk seluruh run. Jika banyak job dipilih, mengaktifkannya berarti setiap VM/job akan menjalankan Speedtest.
 - Menggunakan Ookla Speedtest CLI dari repository paket Linux Ookla.
+- GitHub-hosted runner saat ini terdeteksi sebagai Ubuntu 24.04 (Noble), tetapi log run menunjukkan Packagecloud tidak menyediakan indeks `noble Release` pada endpoint yang dibuat installer. Workflow sekarang menghapus source Noble yang gagal dan menjalankan installer dengan `os=ubuntu dist=jammy`, yaitu kanal Ubuntu Jammy yang tersedia di Packagecloud. Dokumen Packagecloud menyediakan contoh untuk memaksa distribusi melalui nilai `os=` dan `dist=`; daftar paket Ookla juga memuat paket resmi Ubuntu Jammy. Rujukan: [instruksi GPG/repository Packagecloud](https://packagecloud.io/app/ookla/speedtest-cli/gpg) dan [paket Ookla Ubuntu Jammy](https://packagecloud.io/ookla/speedtest-cli/packages/ubuntu/jammy/speedtest_1.2.0.84-1.ea6b6773cf_amd64.deb).
+- Setelah konfigurasi repository, workflow menjalankan `apt-get update`, memeriksa `apt-cache policy speedtest`, dan hanya melanjutkan instalasi bila kandidat paket tersedia.
 - Mencatat ISP, server, latency, download, upload, dan URL hasil bila tersedia. Hasil dimasukkan ke ringkasan job dan artefak log job.
-- Setup atau tes jaringan yang gagal bersifat **non-fatal**: dicatat, lalu proses build image tetap berlanjut.
+- Setup repository, refresh indeks, tidak tersedianya kandidat paket, kegagalan instalasi, atau tes jaringan yang gagal bersifat **non-fatal**: dicatat, lalu proses build image tetap berlanjut.
 - Tes dibatasi dengan timeout 120 detik, sementara langkah instalasi memiliki timeout 10 menit.
+- **Catatan validasi:** pemilihan kanal Jammy merupakan workaround berdasarkan ketersediaan paket Ookla yang dipublikasikan, tetapi perlu diuji melalui Actions run baru. Belum ada bukti run baru sesudah patch ini sukses menginstal CLI dan menyelesaikan pengukuran.
 
 Speedtest opsional bisa menambah waktu job dan penggunaan jaringan. Pengujian berulang secara paralel dapat memengaruhi hasil throughput, jadi hasil antar-job bukan pengukuran laboratorium yang benar-benar terisolasi.
 
