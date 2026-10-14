@@ -36,6 +36,33 @@ jobs:
             bash -n "$file"
             echo "Shell syntax OK: $file"
           done
+          # bash -n on the extension cannot parse shell programs embedded in heredocs;
+          # extract the generated first-boot and helper scripts and validate them too.
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import tempfile
+
+          source = pathlib.Path("extensions/ai-stack-common.sh").read_text(encoding="utf-8")
+          blocks = [
+              ("DBAI_AI_FIRSTBOOT", "bash"),
+              ("DBAI_HERMES_WRAPPER", "bash"),
+              ("DBAI_AI_SETUP", "bash"),
+              ("DBAI_AI_MOTD", "sh"),
+          ]
+          with tempfile.TemporaryDirectory() as tmp:
+              for tag, shell in blocks:
+                  match = re.search(r"<<'" + re.escape(tag) + r"'\\n(.*?)\\n" + re.escape(tag) + r"(?:\\n|$)", source, re.DOTALL)
+                  if not match:
+                      raise SystemExit(f"Could not extract generated script {tag}.")
+                  path = pathlib.Path(tmp) / f"{tag}.{shell}"
+                  path.write_text(match.group(1) + "\\n", encoding="utf-8")
+                  result = subprocess.run([shell, "-n", str(path)], text=True, capture_output=True)
+                  if result.returncode:
+                      raise SystemExit(f"Syntax check failed for generated {tag}:\\n{result.stderr}")
+                  print(f"Embedded script syntax OK: {tag}")
+          PY
 
       - name: Test workflow matrix presets
         shell: bash
