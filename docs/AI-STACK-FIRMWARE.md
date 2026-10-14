@@ -9,12 +9,15 @@ In **DBAI Armbian Build → Applications preset**:
 | Preset | Output |
 |---|---|
 | `all` | All standard application variants plus Hermes-only, 9Router-only, and combined Hermes + 9Router images |
+| `ai-all` | **Only** the three AI variants: Hermes-only, 9Router-only, and combined Hermes + 9Router |
 | `hermes` | Hermes Agent only (other individually checked application options are still additive) |
 | `9router` | 9Router only (other individually checked application options are still additive) |
 | `both` | Hermes Agent + 9Router in one image (other individually checked application options are still additive) |
 | `none` | Only the individually checked application options |
 
 AI variant asset names include `hermes-agent`, `9router`, or `hermes-9router`. AI selections deliberately reuse the existing Applications input, preserving GitHub Actions' 25-input limit.
+
+For a focused first test, choose `ai-all`, choose one OS release (for example `bookworm` or `trixie`), and select `ext4` or `btrfs`. This builds all three AI variants without adding the standard application catalogue. Set filesystem to `both` and OS release group to `all` when you want all supported AI images.
 
 ## First boot: automatic provisioning
 
