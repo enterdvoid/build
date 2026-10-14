@@ -57,7 +57,7 @@ Perubahan source tidak memperbaiki SD card atau file image lama secara otomatis.
 ## Status validasi
 
 - **Source fix:** diterapkan khusus untuk `aml-s9xx-box` dengan boot filesystem `fat`.
-- **Validasi kode:** lulus pada [DBAI Firmware Validation run #27](https://github.com/enterdvoid/build/actions/runs/38541398481), termasuk pemeriksaan sumber partisi dan sintaks shell pada langkah QA image.
+- **Validasi kode:** lulus pada [DBAI Firmware Validation run #28](https://github.com/enterdvoid/build/actions/runs/38541463700), termasuk pemeriksaan sumber partisi dan sintaks shell pada langkah QA image.
 - **Pemeriksaan image hasil build:** kini ada pada workflow sebelum asset diterbitkan; belum dijalankan pada image baru setelah perbaikan ini.
 - **Build image dan uji burn di perangkat nyata:** belum dianggap lulus sampai image baru lolos QA, berhasil boot di STB, dan partisi boot dapat diakses di Windows.
 
