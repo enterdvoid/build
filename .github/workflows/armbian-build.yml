@@ -759,9 +759,7 @@ jobs:
               cat "$error_log" | tee -a "$report"
             fi
           else
-            python3 - "$result_json" <<'PY' >> "$report" || {
-            echo "Speedtest JSON parsing failed; continuing build without parsed measurements." | tee -a "$report"
-          }
+            python3 - "$result_json" <<'PY' >> "$report" || echo "Speedtest JSON parsing failed; continuing build without parsed measurements." | tee -a "$report"
           import json
           import sys
 
@@ -860,7 +858,7 @@ jobs:
             "REVISION=${BUILD_VERSION}"
             "IMAGE_VERSION=${BUILD_VERSION}"
             "VENDOR=DBAI"
-            "VENDORPRETTYNAME=DBAI Armbian"
+            "VENDORPRETTYNAME=Armbian-DBAI-2K26"
             "VENDORCOLOR=39;174;96"
             "VENDORURL=https://github.com/enterdvoid/build"
             "VENDORDOCS=https://github.com/enterdvoid/build#readme"
