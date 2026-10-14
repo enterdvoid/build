@@ -292,7 +292,7 @@ jobs:
                       matrix.append({
                           "filesystem": fs, "profile": "applications", "variant": variant,
                           "release": release,
-                          "image_size": 16384 if variant == "lightnvr-go2rtc" else 8192,
+                          "image_size": 8192,
                           "build_desktop": "no", "build_minimal": "no",
                           "extension": extension, "desktop_env": ""
                       })
@@ -643,7 +643,7 @@ jobs:
             echo '- Kali: Debian Bookworm/Trixie/Forky only.'
             echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
             echo '- CasaOS: Debian Bookworm ARM64; official installer runs from a systemd first-boot service and requires internet on first boot. CasaOS images use the same 8192 MiB raw image target as Desktop.'
-            echo '- LightNVR + go2rtc: Debian Trixie ARM64; pinned LightNVR container includes/manages go2rtc, pulled by the first-boot systemd service. CCTV images use a 16384 MiB raw image target.'
+            echo '- LightNVR + go2rtc: Debian Trixie ARM64; pinned LightNVR container includes/manages go2rtc, pulled by the first-boot systemd service. CCTV images use an 8192 MiB raw image target; mount recordings to external SSD/HDD for retention.'
             echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, Budgie, and LXQt only where Armbian configng declares ARM64 availability for that release.'
             echo '- Openbox is provided as a separate lightweight X11 window-manager session with LightDM, LXPanel, PCManFM, LXTerminal and NetworkManager tray support; it does not rely on DESKTOP_ENVIRONMENT.'
             echo '- KDE Neon, Xmonad, and Deepin are skipped because current Armbian configng marks them unsupported or disabled.'
@@ -655,7 +655,7 @@ jobs:
             echo '- **Board:** `aml-s9xx-box`'
             echo '- **Kernel branch:** `current`'
             echo '- **Boot partition request:** 256 MiB'
-            echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop/Openbox/CasaOS/Proxmox 8192 MiB; LightNVR + go2rtc 16384 MiB'
+            echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop/Openbox/CasaOS/Proxmox/LightNVR + go2rtc 8192 MiB'
             echo '- **Image output:** compressed XZ when produced by Armbian Builder, with SHA-256 checksum'
             echo
             echo '## Integrity and availability'
