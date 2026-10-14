@@ -72,7 +72,8 @@ Input utama:
 - **Filesystem:** `both`, `ext4`, atau `btrfs`.
 - **OS group:** semua release, keluarga Debian/Ubuntu, atau release spesifik.
 - **Server / Minimal / Applications / Desktop:** pilih profil yang akan dibuat.
-- **Pilihan aplikasi:** Home Assistant, OpenMediaVault, Kali, dan Docker CE; matriks membatasi setiap aplikasi pada release yang dikonfigurasi kompatibel.
+- **Pilihan aplikasi:** Home Assistant, OpenMediaVault, Kali, Docker CE, dan CasaOS. CasaOS tersedia pada Bookworm ARM64 dan installer resminya berjalan otomatis pada boot pertama.
+- **CCTV:** LightNVR 0.43.2 + go2rtc terintegrasi; tersedia pada Trixie ARM64 dan container ditarik otomatis saat boot pertama. Jika Applications=all, CasaOS dan CCTV juga ikut dibuat untuk release yang didukung.
 - **Pilihan desktop:** XFCE, MATE, GNOME, Cinnamon, KDE Plasma, LXQt, i3-wm, Enlightenment, Budgie, dan Openbox standalone sesuai dukungan yang tercantum di matriks.
 - **Speedtest:** checkbox opsional dengan default tidak dicentang.
 - **Proxmox VE Official:** opsional; memakai paket resmi Proxmox VE 9 dari repositori no-subscription pada Debian Trixie, sambil mempertahankan kernel/DTB Armbian. Ini bukan sertifikasi dukungan resmi Proxmox untuk STB Amlogic berbasis U-Boot/device tree.
@@ -80,9 +81,32 @@ Input utama:
 - Kedua pilihan Proxmox terpisah dan tidak dipengaruhi **OS group** umum: Official selalu memakai Trixie, Community selalu memakai Bookworm. Filesystem mengikuti pilihan run, dan image berukuran 12.288 MiB agar masuk akal untuk media nominal 16 GB.
 - **Cleanup run history:** operasi penghapusan riwayat Actions yang terpisah dan memerlukan konfirmasi eksplisit `DELETE ALL RUN HISTORY`. Jangan mengaktifkannya bila yang diinginkan adalah build image.
 
-Matriks menolak kombinasi duplikat dan menolak lebih dari batas 256 job GitHub Actions. Default saat semua grup profil dan semua filesystem dipilih menghasilkan 166 job, sesuai pemeriksaan konsistensi yang ditanam dalam workflow. Jumlah job dapat berbeda bila input run diubah.
+Matriks menolak kombinasi duplikat dan menolak lebih dari batas 256 job GitHub Actions. Default saat semua grup profil dan semua filesystem dipilih menghasilkan **170 job** setelah varian CasaOS (Bookworm) dan LightNVR + go2rtc (Trixie) dimasukkan. Setiap pilihan Proxmox menambah satu job per filesystem yang dipilih (dua job bila filesystem=both). Jumlah job berubah sesuai input run.
 
 Bullseye tetap tersedia untuk profil yang ditentukan dalam matriks. Desktop environment Armbian disaring berdasarkan dukungannya; Openbox standalone disediakan melalui ekstensi DBAI tersendiri.
+
+
+### Varian CasaOS dan CCTV
+
+Kedua varian tersedia sebagai checkbox tersendiri di **Run workflow**. Keduanya juga ikut dibuat ketika **Applications=all** dicentang, tetapi hanya untuk release yang cocok:
+
+| Menu | OS basis | Cara pemasangan | Ukuran image mentah |
+|---|---|---|---:|
+| CasaOS | Debian Bookworm ARM64 | Service systemd menjalankan installer resmi CasaOS pada boot pertama | 16.384 MiB |
+| LightNVR + go2rtc | Debian Trixie ARM64 | Docker Compose menarik container LightNVR 0.43.2 pada boot pertama | 16.384 MiB |
+
+Contoh asset:
+
+- aml-s9xx-box-ext4-bookworm-casaos.img.xz
+- aml-s9xx-box-btrfs-bookworm-casaos.img.xz
+- aml-s9xx-box-ext4-trixie-lightnvr-go2rtc.img.xz
+- aml-s9xx-box-btrfs-trixie-lightnvr-go2rtc.img.xz
+
+**Catatan CasaOS:** image membawa service instalasi, bukan semua paket CasaOS yang sudah diunduh saat build. Firmware harus tersambung ke internet ketika boot pertama. Prosesnya dicatat di /var/log/dbai-casaos-install.log; status unit ada di dbai-casaos-firstboot.service. Image memakai target 16 GiB karena CasaOS sendiri membutuhkan ruang untuk aplikasi/container dan data.
+
+**Catatan LightNVR:** firmware memasang Docker CE dan menaruh Compose stack di /opt/dbai-cctv. Pada boot pertama systemd menarik image resmi ghcr.io/opensensor/lightnvr:0.43.2. LightNVR membawa/mengelola go2rtc sendiri—tidak ada go2rtc kedua yang memakai port sama. UI LightNVR: http://IP-STB:8080; API go2rtc: http://IP-STB:1984; RTSP: port 8554; WebRTC: port 8555/TCP dan 8555/UDP. Kredensial awal LightNVR adalah admin/admin; segera ganti saat login pertama. Log layanan tersedia lewat journalctl -u dbai-lightnvr.service, dan log container lewat docker logs lightnvr.
+
+Sebaiknya arahkan rekaman CCTV ke USB HDD/SSD eksternal sebelum menambah banyak kamera; image 16 GiB hanya menyediakan ruang awal untuk OS, konfigurasi, container dan pengujian, bukan kapasitas arsip CCTV jangka panjang. Variasi jumlah kamera, resolusi, codec, dan bitrate akan memengaruhi pemakaian RAM, CPU, jaringan dan disk.
 
 ## 3. Speedtest VM (opsional)
 
