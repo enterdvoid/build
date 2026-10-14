@@ -57,7 +57,7 @@ on:
         type: boolean
         default: true
       applications:
-        description: "Preset aplikasi: all = semua aplikasi + 3 varian AI; ai-all = ketiga varian AI saja; none = hanya checkbox; atau pilih Hermes / 9Router / gabungan"
+        description: "Preset aplikasi: all = semua aplikasi + 3 AI; ai-all = ketiga varian AI; none = hanya checkbox; hermes/9router/both = satu pilihan AI. Server/Minimal/Desktop terpisah."
         required: true
         type: choice
         default: all
@@ -471,7 +471,7 @@ jobs:
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL desktop_mode=$DESKTOP_MODE"
-          echo "Application preset: $APPLICATIONS (all = all standard apps + 3 AI variants; ai-all = 3 AI variants only; hermes / 9router / both = selected AI variant; none = individual app checkboxes only)"
+          echo "Application preset: $APPLICATIONS (all = all standard apps + 3 AI variants; ai-all = all 3 AI app variants; Server/Minimal/Desktop selections remain independent; hermes / 9router / both = selected AI variant; none = individual app checkboxes only)"
           echo "Desktop mode: $DESKTOP_MODE (all = all supported DEs + Openbox; openbox = standalone; custom = individual DE checkboxes; none = no desktop)"
           echo "CasaOS (Bookworm): $CASAOS"
           echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
