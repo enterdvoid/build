@@ -738,8 +738,25 @@ jobs:
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if ! sudo bash "$RUNNER_TEMP/ookla-speedtest-repo.sh"; then
-            echo "Speedtest setup failed while configuring the package repository; continuing build without speed measurements." | tee -a "$report"
+          # Packagecloud currently publishes the Ookla Ubuntu package for Jammy,
+          # while the GitHub-hosted Ubuntu 24.04 runner is detected as Noble.
+          # Avoid leaving a known-broken Noble source entry and force the published Jammy repo.
+          sudo rm -f /etc/apt/sources.list.d/ookla_speedtest-cli.list
+          echo "Runner is Ubuntu Noble; configuring Ookla's published Ubuntu Jammy package channel."
+          if ! sudo env os=ubuntu dist=jammy bash "$RUNNER_TEMP/ookla-speedtest-repo.sh"; then
+            echo "Speedtest setup failed while configuring the Ubuntu Jammy package repository; continuing build without speed measurements." | tee -a "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! sudo apt-get update; then
+            echo "Speedtest package index refresh failed; continuing build without speed measurements." | tee -a "$report"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          speedtest_candidate="$(apt-cache policy speedtest 2>/dev/null | awk '/Candidate:/ {print $2}')"
+          echo "Ookla Speedtest package candidate: ${speedtest_candidate:-none}" | tee -a "$report"
+          if [[ -z "$speedtest_candidate" || "$speedtest_candidate" == "(none)" ]]; then
+            echo "No installable Ookla Speedtest package candidate is available; continuing build without speed measurements." | tee -a "$report"
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
