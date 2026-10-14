@@ -759,7 +759,9 @@ jobs:
               cat "$error_log" | tee -a "$report"
             fi
           else
-            python3 - "$result_json" <<'PY' >> "$report"
+            python3 - "$result_json" <<'PY' >> "$report" || {
+            echo "Speedtest JSON parsing failed; continuing build without parsed measurements." | tee -a "$report"
+          }
           import json
           import sys
 
