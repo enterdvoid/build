@@ -57,17 +57,17 @@ on:
         type: boolean
         default: true
       applications:
-        description: "Preset aplikasi: all = semua aplikasi + 3 AI; ai-all = ketiga varian AI; none = hanya checkbox; hermes/9router/both = satu pilihan AI. Server/Minimal/Desktop terpisah."
+        description: "Hanya mengatur aplikasi. all mengabaikan checkbox app; opsi lain menambahkan checkbox app. Server/Minimal/Desktop tetap terpisah."
         required: true
         type: choice
-        default: all
+        default: "all — Semua aplikasi standar + 3 varian AI"
         options:
-          - all
-          - ai-all
-          - none
-          - hermes
-          - 9router
-          - both
+          - "all — Semua aplikasi standar + 3 varian AI"
+          - "ai-all — 3 varian AI + aplikasi yang dicentang"
+          - "none — Hanya aplikasi yang dicentang (tanpa preset AI)"
+          - "hermes — Hermes + aplikasi yang dicentang"
+          - "9router — 9Router + aplikasi yang dicentang"
+          - "both — Hermes + 9Router (satu image) + aplikasi yang dicentang"
       home_assistant:
         description: "Application: Home Assistant (Bookworm/Trixie)"
         required: true
@@ -245,9 +245,11 @@ jobs:
               ("casaos", "applications-casaos", "CASAOS", {"bookworm"}),
               ("lightnvr-go2rtc", "cctv-lightnvr", "CCTV_LIGHTNVR", {"trixie"}),
           ]
-          application_mode = os.environ.get("APPLICATIONS", "all").lower()
+          application_mode_input = os.environ.get("APPLICATIONS", "all").lower()
+          # The UI choices include Indonesian descriptions; the short prefix is the stable preset key.
+          application_mode = application_mode_input.partition(" — ")[0].strip()
           if application_mode not in {"all", "ai-all", "none", "hermes", "9router", "both"}:
-              raise SystemExit(f"Invalid application preset: {application_mode}")
+              raise SystemExit(f"Invalid application preset: {application_mode_input}")
           select_all_apps = application_mode == "all"
           selected_apps = [
               (variant, extension, supported_releases)
@@ -471,7 +473,8 @@ jobs:
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL desktop_mode=$DESKTOP_MODE"
-          echo "Application preset: $APPLICATIONS (all = all standard apps + 3 AI variants; ai-all = all 3 AI app variants; Server/Minimal/Desktop selections remain independent; hermes / 9router / both = selected AI variant; none = individual app checkboxes only)"
+          echo "Application preset: $APPLICATIONS"
+          echo "Preset meaning: all = all standard apps + 3 AI variants (ignores individual app checkboxes); ai-all = 3 AI variants + checked app boxes; none = checked app boxes only, no AI preset. Server/Minimal/Desktop are selected independently."
           echo "Desktop mode: $DESKTOP_MODE (all = all supported DEs + Openbox; openbox = standalone; custom = individual DE checkboxes; none = no desktop)"
           echo "CasaOS (Bookworm): $CASAOS"
           echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
