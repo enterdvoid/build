@@ -41,7 +41,7 @@ cd build
 
 ## DBAI Build Workflow
 
-This fork includes DBAI-specific image branding, versioning, GitHub Actions matrix builds, optional VM Speedtest, Openbox, separate Proxmox VE Official/PXVIRT Community variants, CasaOS, LightNVR with integrated go2rtc, and release checksum handling. CasaOS and CCTV services provision on first boot; see the [DBAI Armbian Build documentation](docs/DBAI-ARMBIAN-BUILD.md) for OS support, image sizes, and validation status, plus the [Windows boot-partition compatibility guide](docs/IMAGE-PARTITIONS-WINDOWS.md) for MBR/FAT diagnostics.
+This fork includes DBAI-specific image branding, versioning, GitHub Actions matrix builds, optional VM Speedtest, Openbox, separate Proxmox VE Official/PXVIRT Community variants, CasaOS, LightNVR with integrated go2rtc, and release checksum handling. CasaOS and CCTV services provision on first boot; see the [DBAI Armbian Build documentation](docs/DBAI-ARMBIAN-BUILD.md) for OS support, image sizes, and validation status, plus the [Windows boot-partition compatibility guide](docs/IMAGE-PARTITIONS-WINDOWS.md) for MBR/FAT diagnostics. The [standalone Hermes and 9Router usage guide](docs/PANDUAN-HERMES-9ROUTER.md) covers first boot, provider setup, maintenance, security, and troubleshooting.
 
 ## Resources
 
