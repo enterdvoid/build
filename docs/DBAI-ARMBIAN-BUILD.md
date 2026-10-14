@@ -154,7 +154,7 @@ Contoh nama output:
 - `aml-s9xx-box-ext4-bookworm-proxmox-community.img.xz`
 - `aml-s9xx-box-btrfs-bookworm-proxmox-community.img.xz`
 
-Repositori Official menggunakan keyring resmi Trixie dan komponen `pve-no-subscription`. Repositori Community memakai keyring Lierfang dan komponen PXVIRT 8 `bookworm main`. Keduanya sengaja tidak memasang meta-package/kernel Proxmox; ini menjaga kernel dan DTB yang membuat STB bisa boot. Karena itu kernel updates serta dukungan modul kernel akan tetap mengikuti Armbian. Fitur ZFS/DKMS tidak dipasang otomatis; konfigurasi bridge jaringan dan storage guest dilakukan setelah boot.
+Repositori Official menggunakan keyring resmi Trixie dan komponen `pve-no-subscription`. Repositori Community memakai key `pveport.gpg` dari dokumentasi PXVIRT dan komponen `bookworm main`. Keduanya sengaja tidak memasang meta-package/kernel Proxmox; ini menjaga kernel dan DTB yang membuat STB bisa boot. Karena itu kernel updates serta dukungan modul kernel akan tetap mengikuti Armbian. Fitur ZFS/DKMS tidak dipasang otomatis; konfigurasi bridge jaringan dan storage guest dilakukan setelah boot.
 
 Sebuah systemd one-shot mengatur pemetaan hostname ke alamat IPv4 LAN saat boot pertama sebelum layanan utama Proxmox/PXVIRT berjalan. Ini membantu layanan web dan cluster menemukan alamat host, tetapi pengguna tetap harus memastikan DHCP/static IP dan hostname sesuai jaringan.
 
