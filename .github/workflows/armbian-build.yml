@@ -1226,7 +1226,7 @@ jobs:
             echo "### Image partition QA"
             echo "- MBR boot partition type: `0x0C` (FAT32-LBA)"
             echo "- Boot filesystem detected by blkid: `$boot_fs`"
-            echo "- QA passed for `$asset` after asset naming below."
+            echo "- QA passed for `aml-s9xx-box-${FS}-${RELEASE}-${VARIANT}`."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$image" == *.img.xz ]]; then
