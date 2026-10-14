@@ -33,13 +33,18 @@ on:
         required: true
         type: boolean
         default: false
-      run_mode:
-        description: "Pilih build normal atau tindakan destruktif penghapusan riwayat run"
+      cleanup_run_history:
+        description: "HAPUS permanen riwayat workflow run di repository (tidak membangun image)"
+        required: true
+        type: boolean
+        default: false
+      confirm_run_history_cleanup:
+        description: "Wajib pilih DELETE ALL RUN HISTORY untuk menjalankan penghapusan"
         required: true
         type: choice
-        default: build
+        default: NO
         options:
-          - build
+          - NO
           - DELETE ALL RUN HISTORY
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
@@ -141,16 +146,16 @@ on:
         required: true
         type: boolean
         default: false
-      proxmox_official:
-        description: "Proxmox VE Official packages 9.x: Debian Trixie, kernel Armbian (eksperimental pada STB)"
+      proxmox_mode:
+        description: "Proxmox: jangan build, Official VE 9, Community PXVIRT 8, atau keduanya"
         required: true
-        type: boolean
-        default: false
-      proxmox_community:
-        description: "Proxmox Community PXVIRT 8: Debian Bookworm, kernel Armbian"
-        required: true
-        type: boolean
-        default: false
+        type: choice
+        default: none
+        options:
+          - none
+          - official
+          - community
+          - both
 
 permissions:
   contents: read
@@ -162,7 +167,7 @@ concurrency:
 jobs:
   prepare:
     name: Generate build matrix
-    if: inputs.run_mode != 'DELETE ALL RUN HISTORY'
+    if: inputs.cleanup_run_history != true
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -191,8 +196,7 @@ jobs:
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
           DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
-          PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
-          PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
+          PROXMOX_MODE: ${{ inputs.proxmox_mode }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
@@ -317,10 +321,13 @@ jobs:
 
           # Proxmox variants use dedicated Debian bases independent of the general OS selector:
           # official Proxmox VE 9 packages on Trixie; community PXVIRT 8 packages on Bookworm.
+          proxmox_mode = os.environ.get("PROXMOX_MODE", "none").lower()
+          if proxmox_mode not in {"none", "official", "community", "both"}:
+              raise SystemExit(f"Invalid Proxmox mode: {proxmox_mode}")
           proxmox_variants = []
-          if truthy("PROXMOX_OFFICIAL"):
+          if proxmox_mode in {"official", "both"}:
               proxmox_variants.append(("proxmox-official", "proxmox-official", "trixie"))
-          if truthy("PROXMOX_COMMUNITY"):
+          if proxmox_mode in {"community", "both"}:
               proxmox_variants.append(("proxmox-community", "proxmox-community", "bookworm"))
           for variant, extension, release in proxmox_variants:
               for fs in filesystems:
@@ -376,8 +383,8 @@ jobs:
           ):
               expected_default_jobs = (
                   170
-                  + len(filesystems) * int(truthy("PROXMOX_OFFICIAL"))
-                  + len(filesystems) * int(truthy("PROXMOX_COMMUNITY"))
+                  + len(filesystems) * int(proxmox_mode in {"official", "both"})
+                  + len(filesystems) * int(proxmox_mode in {"community", "both"})
               )
               if len(matrix) != expected_default_jobs:
                   raise SystemExit(
@@ -417,8 +424,7 @@ jobs:
           SPEEDTEST: ${{ inputs.speedtest }}
           CASAOS: ${{ inputs.casaos }}
           CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
-          PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
-          PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
+          PROXMOX_MODE: ${{ inputs.proxmox_mode }}
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
@@ -426,13 +432,12 @@ jobs:
           echo "Desktop mode: $DESKTOP_MODE (all = all supported DEs + Openbox; openbox = standalone; custom = individual DE checkboxes; none = no desktop)"
           echo "CasaOS (Bookworm): $CASAOS"
           echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
-          echo "Proxmox Official (Trixie): $PROXMOX_OFFICIAL"
-          echo "Proxmox Community/PXVIRT 8 (Bookworm): $PROXMOX_COMMUNITY"
+          echo "Proxmox selection: $PROXMOX_MODE (none / official / community / both)"
           echo "VM Speedtest enabled: $SPEEDTEST"
           echo "Build matrix generated."
 
   create_release:
-    if: inputs.run_mode != 'DELETE ALL RUN HISTORY'
+    if: inputs.cleanup_run_history != true
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
@@ -523,8 +528,7 @@ jobs:
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
           DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
-          PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
-          PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
+          PROXMOX_MODE: ${{ inputs.proxmox_mode }}
         shell: bash
         run: |
           set -euo pipefail
@@ -600,8 +604,8 @@ jobs:
             echo "- **VM Speedtest:** ${SPEEDTEST} (one test per build job when enabled)"
             echo "- **Selected profile groups:** ${category_title}"
             echo "- **Desktop mode:** ${DESKTOP_MODE}"
-            if [[ "$PROXMOX_OFFICIAL" == "true" ]]; then echo "- **Proxmox Official:** Proxmox VE 9 packages on Debian Trixie; retains Armbian kernel; experimental on Amlogic STB"; fi
-            if [[ "$PROXMOX_COMMUNITY" == "true" ]]; then echo "- **Proxmox Community:** PXVIRT 8 on Debian Bookworm; retains Armbian kernel"; fi
+            if [[ "$PROXMOX_MODE" == "official" || "$PROXMOX_MODE" == "both" ]]; then echo "- **Proxmox Official:** Proxmox VE 9 packages on Debian Trixie; retains Armbian kernel; experimental on Amlogic STB"; fi
+            if [[ "$PROXMOX_MODE" == "community" || "$PROXMOX_MODE" == "both" ]]; then echo "- **Proxmox Community:** PXVIRT 8 on Debian Bookworm; retains Armbian kernel"; fi
             echo "- **Matrix jobs:** $(python3 -c 'import json,os; print(len(json.loads(os.environ["MATRIX_JSON"]).get("include", [])))')"
             echo "- **Image asset format:** `aml-s9xx-box-{filesystem}-{os-release}-{variant}.img.xz` (or `.img`)"
             if [[ "$SERVER" == "true" ]]; then echo '- **Profile:** Server on every selected OS release'; fi
@@ -673,7 +677,7 @@ jobs:
           echo "image_version=$image_version" >> "$GITHUB_OUTPUT"
           echo "Prepared release: $release_title ($tag; image version $image_version)"
   build:
-    if: inputs.run_mode != 'DELETE ALL RUN HISTORY'
+    if: inputs.cleanup_run_history != true
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
@@ -1113,7 +1117,7 @@ jobs:
 
   finalize_release:
     needs: [create_release, build]
-    if: always() && inputs.run_mode != 'DELETE ALL RUN HISTORY' && needs.create_release.result == 'success'
+    if: always() && inputs.cleanup_run_history != true && needs.create_release.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -1196,7 +1200,7 @@ jobs:
           echo "Published SHA256SUMS.txt; removed ${#checksum_assets[@]} current sidecars."
 
   cleanup_workflow_history:
-    if: inputs.run_mode == 'DELETE ALL RUN HISTORY'
+    if: inputs.cleanup_run_history == true
     name: Delete workflow run history
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1206,7 +1210,7 @@ jobs:
       - name: Permanently delete repository workflow runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CONFIRMATION: ${{ inputs.run_mode }}
+          CONFIRMATION: ${{ inputs.confirm_run_history_cleanup }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
