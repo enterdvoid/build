@@ -14,7 +14,7 @@ function post_repo_customize_image__dbai_install_proxmox_community() {
 	display_alert "Adding PXVIRT 8 community repository for Debian Bookworm" "${EXTENSION}" "info"
 
 	run_host_command_logged install -m 0755 -d "${SDCARD}/usr/share/keyrings" "${SDCARD}/etc/apt/preferences.d"
-	run_host_command_logged curl --max-time 60 -4 -fsSL "https://mirrors.lierfang.com/pxcloud/lierfang.gpg" -o "${SDCARD}/usr/share/keyrings/lierfang.gpg"
+	run_host_command_logged curl --max-time 60 -4 -fsSL "https://mirrors.lierfang.com/pxcloud/pxvirt/pveport.gpg" -o "${SDCARD}/usr/share/keyrings/lierfang.gpg"
 	run_host_command_logged chmod 0644 "${SDCARD}/usr/share/keyrings/lierfang.gpg"
 
 	cat > "${SDCARD}/etc/apt/sources.list.d/pxvirt-sources.list" <<'PXVIRT_SOURCES'
