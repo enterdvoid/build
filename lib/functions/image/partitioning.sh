@@ -224,7 +224,17 @@ function prepare_partitions() {
 				if [[ -n "$bootpart" ]]; then
 					# dos: Linux extended boot (see https://github.com/util-linux/util-linux/commit/d0c430068206e1215222792e3aa10689f8c632a6)
 					# gpt: Linux extended boot
-					[[ "$IMAGE_PARTITION_TABLE" != "gpt" ]] && local type="ea" || local type="BC13C2FF-59E6-4262-A352-B275FD6F7172"
+					if [[ "$IMAGE_PARTITION_TABLE" != "gpt" ]]; then
+						if [[ "$BOARD" == "aml-s9xx-box" && "$bootfs" == "fat" ]]; then
+							# The Amlogic TV-box boot partition is FAT; use the standard FAT32-LBA MBR ID
+							# instead of Linux XBOOTLDR (0xEA / decimal 234), which Windows commonly hides.
+							local type="0c"
+						else
+							local type="ea"
+						fi
+					else
+						local type="BC13C2FF-59E6-4262-A352-B275FD6F7172"
+					fi
 					if [[ -n "$rootpart" ]]; then
 						echo "$bootpart : name=\"bootfs\", start=${next}MiB, size=${BOOTSIZE}MiB, type=${type}"
 						local next=$(($next + $BOOTSIZE))
