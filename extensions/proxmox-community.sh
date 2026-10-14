@@ -13,12 +13,48 @@ function extension_prepare_config__dbai_proxmox_community() {
 function post_repo_customize_image__dbai_install_proxmox_community() {
 	display_alert "Adding PXVIRT 8 community repository for Debian Bookworm" "${EXTENSION}" "info"
 
-	run_host_command_logged install -m 0755 -d "${SDCARD}/usr/share/keyrings" "${SDCARD}/etc/apt/preferences.d"
-	run_host_command_logged curl --max-time 60 -4 -fsSL "https://mirrors.lierfang.com/pxcloud/pxvirt/pveport.gpg" -o "${SDCARD}/usr/share/keyrings/lierfang.gpg"
-	run_host_command_logged chmod 0644 "${SDCARD}/usr/share/keyrings/lierfang.gpg"
+	run_host_command_logged install -m 0755 -d "${SDCARD}/usr/share/keyrings" "${SDCARD}/etc/apt/preferences.d" "${SDCARD}/tmp"
 
-	cat > "${SDCARD}/etc/apt/sources.list.d/pxvirt-sources.list" <<'PXVIRT_SOURCES'
-deb [arch=arm64 signed-by=/usr/share/keyrings/lierfang.gpg] https://mirrors.lierfang.com/pxcloud/pxvirt bookworm main
+	# The primary mirror returned HTTP 403 in GitHub Actions. Prefer the documented
+	# US mirror, then try the JP and primary mirrors. Use the same mirror for both
+	# the signing key and repository so a partial/mismatched mirror cannot be selected.
+	local -a pxvirt_mirrors=(
+		"https://us.mirrors.lierfang.com/pxcloud/pxvirt"
+		"https://jp.mirrors.lierfang.com/pxcloud/pxvirt"
+		"https://mirrors.lierfang.com/pxcloud/pxvirt"
+	)
+	local pxvirt_repo_base=""
+	local pxvirt_key_tmp="${SDCARD}/tmp/lierfang.gpg.tmp"
+	local pxvirt_release_tmp="${SDCARD}/tmp/pxvirt-InRelease.tmp"
+	local candidate
+	for candidate in "${pxvirt_mirrors[@]}"; do
+		rm -f "$pxvirt_key_tmp" "$pxvirt_release_tmp"
+		display_alert "Checking PXVIRT mirror" "$candidate" "info"
+		if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 60 --retry 1 -4 "$candidate/pveport.gpg" -o "$pxvirt_key_tmp" \
+			&& [[ -s "$pxvirt_key_tmp" ]] \
+			&& curl --fail --location --silent --show-error --connect-timeout 15 --max-time 60 --retry 1 -4 "$candidate/dists/bookworm/InRelease" -o "$pxvirt_release_tmp" \
+			&& [[ -s "$pxvirt_release_tmp" ]]; then
+			# Reject an HTML error page or invalid key if GnuPG is available in the build container.
+			if command -v gpg >/dev/null 2>&1 && ! gpg --batch --show-keys "$pxvirt_key_tmp" >/dev/null 2>&1; then
+				echo "PXVIRT mirror returned a file that is not a readable OpenPGP key: $candidate" >&2
+				continue
+			fi
+			pxvirt_repo_base="$candidate"
+			break
+		fi
+		echo "PXVIRT mirror failed key/Release preflight; trying the next mirror: $candidate" >&2
+	done
+	rm -f "$pxvirt_release_tmp"
+	if [[ -z "$pxvirt_repo_base" ]]; then
+		rm -f "$pxvirt_key_tmp"
+		exit_with_error "Could not fetch a valid PXVIRT key and Bookworm InRelease from any documented mirror"
+	fi
+	mv "$pxvirt_key_tmp" "${SDCARD}/usr/share/keyrings/lierfang.gpg"
+	run_host_command_logged chmod 0644 "${SDCARD}/usr/share/keyrings/lierfang.gpg"
+	display_alert "Using PXVIRT repository mirror" "$pxvirt_repo_base" "info"
+
+	cat > "${SDCARD}/etc/apt/sources.list.d/pxvirt-sources.list" <<PXVIRT_SOURCES
+deb [arch=arm64 signed-by=/usr/share/keyrings/lierfang.gpg] ${pxvirt_repo_base} bookworm main
 PXVIRT_SOURCES
 
 	# Do not replace the Armbian kernel/headers needed by the STB's U-Boot and DTB.
