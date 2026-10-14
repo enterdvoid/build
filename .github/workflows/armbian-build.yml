@@ -879,7 +879,7 @@ jobs:
             "KERNEL_CONFIGURE=no"
           )
           if [[ -n "$EXTENSION" ]]; then
-              args+=("ENABLE_EXTENSIONS=dbai-branding,${EXTENSION}")
+            args+=("ENABLE_EXTENSIONS=dbai-branding,${EXTENSION}")
           else
             args+=("ENABLE_EXTENSIONS=dbai-branding")
           fi
