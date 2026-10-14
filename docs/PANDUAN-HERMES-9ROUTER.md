@@ -108,7 +108,7 @@ Pada image 9Router, perintah tersebut menampilkan alamat dashboard, alamat API, 
 http://IP-STB:20128/dashboard
 ```
 
-Ganti `IP-STB` dengan alamat IP perangkat yang ditampilkan oleh `dbai-ai-setup`. Login dengan password awal yang ditampilkan, lalu segera ganti password tersebut. Password awal hanya untuk login pertama; password yang sudah diganti tidak ditampilkan kembali oleh helper.
+Ganti `IP-STB` dengan alamat IP perangkat yang ditampilkan oleh `dbai-ai-setup`. Login dengan password awal yang ditampilkan, lalu segera ganti password tersebut. **Catatan implementasi:** helper saat ini membaca kembali nilai `INITIAL_PASSWORD` dari file konfigurasi dan dapat menampilkannya lagi setiap kali dipanggil. Setelah password dashboard diubah, nilai yang tercetak itu adalah password awal yang sudah kedaluwarsa, bukan password login aktif. Jangan gunakan nilai itu untuk mencoba mengambil alih dashboard; simpan file `/etc/dbai/9router.env` tetap terbatas pada root.
 
 ### Hubungkan provider
 
