@@ -1,23 +1,23 @@
 # @description Preinstalls Proxmox VE 9 userspace packages from the official no-subscription repository on Debian Trixie while retaining the Armbian kernel and device tree. Amlogic STB compatibility is experimental; official Proxmox ARM64 platform support does not certify this U-Boot/device-tree board.
 
 function extension_prepare_config__dbai_proxmox_official() {
-	case "\${RELEASE}" in
+	case "${RELEASE}" in
 		trixie) ;;
-		*) exit_with_error "Proxmox VE Official packages require Debian Trixie; got \${RELEASE}" ;;
+		*) exit_with_error "Proxmox VE Official packages require Debian Trixie; got ${RELEASE}" ;;
 	esac
-	[[ "\${ARCH}" == "arm64" ]] || exit_with_error "Proxmox VE Official packages require ARM64; got \${ARCH}"
-	display_alert "Target image will include Proxmox VE 9 official userspace packages (Armbian kernel retained)" "\${RELEASE}" "info"
+	[[ "${ARCH}" == "arm64" ]] || exit_with_error "Proxmox VE Official packages require ARM64; got ${ARCH}"
+	display_alert "Target image will include Proxmox VE 9 official userspace packages (Armbian kernel retained)" "${RELEASE}" "info"
 	EXTRA_IMAGE_SUFFIXES+=("-proxmox-official")
 }
 
 function post_repo_customize_image__dbai_install_proxmox_official() {
-	display_alert "Adding official Proxmox VE 9 no-subscription repository" "\${EXTENSION}" "info"
+	display_alert "Adding official Proxmox VE 9 no-subscription repository" "${EXTENSION}" "info"
 
-	run_host_command_logged install -m 0755 -d "\${SDCARD}/usr/share/keyrings" "\${SDCARD}/etc/apt/preferences.d"
-	run_host_command_logged curl --max-time 60 -4 -fsSL "https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg" -o "\${SDCARD}/usr/share/keyrings/proxmox-archive-keyring.gpg"
-	run_host_command_logged chmod 0644 "\${SDCARD}/usr/share/keyrings/proxmox-archive-keyring.gpg"
+	run_host_command_logged install -m 0755 -d "${SDCARD}/usr/share/keyrings" "${SDCARD}/etc/apt/preferences.d"
+	run_host_command_logged curl --max-time 60 -4 -fsSL "https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg" -o "${SDCARD}/usr/share/keyrings/proxmox-archive-keyring.gpg"
+	run_host_command_logged chmod 0644 "${SDCARD}/usr/share/keyrings/proxmox-archive-keyring.gpg"
 
-	cat > "\${SDCARD}/etc/apt/sources.list.d/pve-install-repo.sources" <<'PVE_OFFICIAL_SOURCES'
+	cat > "${SDCARD}/etc/apt/sources.list.d/pve-install-repo.sources" <<'PVE_OFFICIAL_SOURCES'
 Types: deb
 URIs: https://download.proxmox.com/debian/pve
 Suites: trixie
@@ -26,7 +26,7 @@ Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
 PVE_OFFICIAL_SOURCES
 
 	# Avoid a Proxmox meta-package pulling a kernel unsuitable for this U-Boot/DTB image.
-	cat > "\${SDCARD}/etc/apt/preferences.d/dbai-proxmox-no-kernel.pref" <<'PVE_OFFICIAL_PIN'
+	cat > "${SDCARD}/etc/apt/preferences.d/dbai-proxmox-no-kernel.pref" <<'PVE_OFFICIAL_PIN'
 Package: proxmox-ve proxmox-default-kernel proxmox-kernel-* proxmox-headers-* pve-kernel-* pve-headers-*
 Pin: release *
 Pin-Priority: -1
@@ -38,16 +38,16 @@ PVE_OFFICIAL_PIN
 	printf '%s\n' \
 		"postfix postfix/main_mailer_type select Local only" \
 		"postfix postfix/mailname string dbai-proxmox.local" \
-		> "\${SDCARD}/tmp/dbai-proxmox-postfix.preseed"
+		> "${SDCARD}/tmp/dbai-proxmox-postfix.preseed"
 	chroot_sdcard "debconf-set-selections /tmp/dbai-proxmox-postfix.preseed"
 	chroot_sdcard_apt_get_install pve-manager postfix open-iscsi chrony
-	rm -f "\${SDCARD}/tmp/dbai-proxmox-postfix.preseed"
+	rm -f "${SDCARD}/tmp/dbai-proxmox-postfix.preseed"
 
-	if [[ -f "\${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources" ]]; then
-		if grep -q '^Enabled:' "\${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"; then
-			sed -i 's/^Enabled:.*/Enabled: false/' "\${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"
+	if [[ -f "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources" ]]; then
+		if grep -q '^Enabled:' "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"; then
+			sed -i 's/^Enabled:.*/Enabled: false/' "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"
 		else
-			printf '\nEnabled: false\n' >> "\${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"
+			printf '\nEnabled: false\n' >> "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"
 		fi
 	fi
 
@@ -56,9 +56,9 @@ PVE_OFFICIAL_PIN
 
 function dbai_proxmox_add_firstboot_hostname_service() {
 	run_host_command_logged install -m 0755 -d \
-		"\${SDCARD}/usr/local/sbin" \
-		"\${SDCARD}/etc/systemd/system/multi-user.target.wants"
-	cat > "\${SDCARD}/usr/local/sbin/dbai-proxmox-hosts" <<'DBAI_PVE_HOSTS'
+		"${SDCARD}/usr/local/sbin" \
+		"${SDCARD}/etc/systemd/system/multi-user.target.wants"
+	cat > "${SDCARD}/usr/local/sbin/dbai-proxmox-hosts" <<'DBAI_PVE_HOSTS'
 #!/bin/sh
 set -eu
 host="$(hostname -s 2>/dev/null || hostname)"
@@ -91,9 +91,9 @@ cat "$tmp" > /etc/hosts
 rm -f "$tmp"
 logger -t dbai-proxmox-hosts "Mapped $host to $ip_addr for Proxmox services."
 DBAI_PVE_HOSTS
-	run_host_command_logged chmod 0755 "\${SDCARD}/usr/local/sbin/dbai-proxmox-hosts"
+	run_host_command_logged chmod 0755 "${SDCARD}/usr/local/sbin/dbai-proxmox-hosts"
 
-	cat > "\${SDCARD}/etc/systemd/system/dbai-proxmox-hosts.service" <<'DBAI_PVE_SERVICE'
+	cat > "${SDCARD}/etc/systemd/system/dbai-proxmox-hosts.service" <<'DBAI_PVE_SERVICE'
 [Unit]
 Description=Resolve DBAI Proxmox hostname to the current LAN address
 Wants=network-online.target
@@ -111,10 +111,10 @@ TimeoutStartSec=90
 WantedBy=multi-user.target
 DBAI_PVE_SERVICE
 
-	ln -sfn ../dbai-proxmox-hosts.service "\${SDCARD}/etc/systemd/system/multi-user.target.wants/dbai-proxmox-hosts.service"
+	ln -sfn ../dbai-proxmox-hosts.service "${SDCARD}/etc/systemd/system/multi-user.target.wants/dbai-proxmox-hosts.service"
 	for unit in pve-cluster pvedaemon pveproxy pvestatd; do
-		run_host_command_logged install -m 0755 -d "\${SDCARD}/etc/systemd/system/\${unit}.service.d"
-		cat > "\${SDCARD}/etc/systemd/system/\${unit}.service.d/10-dbai-hostname.conf" <<'DBAI_PVE_DROPIN'
+		run_host_command_logged install -m 0755 -d "${SDCARD}/etc/systemd/system/${unit}.service.d"
+		cat > "${SDCARD}/etc/systemd/system/${unit}.service.d/10-dbai-hostname.conf" <<'DBAI_PVE_DROPIN'
 [Unit]
 Requires=dbai-proxmox-hosts.service
 After=dbai-proxmox-hosts.service
