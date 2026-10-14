@@ -40,7 +40,9 @@ The first invocation opens Hermes' supported provider/model picker and starts a 
 
 ### 9Router image
 
-Open the URL printed by `sudo dbai-ai-setup` from a computer on the same LAN, log in with the generated initial password, change it, and connect the provider you want to use. The OpenAI-compatible endpoint is `http://<device-IP>:20128/v1`. The API requires an API key.
+Open the URL printed by `sudo dbai-ai-setup` from a computer on the same LAN, log in with the generated initial password, change it, and connect the provider you want to use. The OpenAI-compatible endpoint is `http://<device-IP>:20128/v1`. An API key should be used by API clients, but do not assume that `REQUIRE_API_KEY=true` is enforced by every upstream image version: upstream issue [decolua/9router #2834](https://github.com/decolua/9router/issues/2834) documents versions where this environment flag is ignored.
+
+At first boot and whenever you run `sudo dbai-ai-setup`, the firmware checks whether `/v1/models` rejects a request without a bearer token. If it returns HTTP 200, open **Dashboard → Endpoint**, enable the API-key requirement, and re-run `sudo dbai-ai-setup` until the check reports HTTP 401/403. This protects the OpenAI-compatible API; keep the dashboard and service on a trusted LAN and never port-forward 20128 directly to the public internet.
 
 To update the container to the publisher's current image:
 
@@ -63,7 +65,8 @@ The helper validates the key against `/v1/models`, lists model IDs returned by 9
 ## Security notes
 
 - 9Router's initial dashboard password, JWT secret, API-key signing secret, and machine ID salt are generated randomly on first boot, not during image build.
-- The 9Router runtime requires API keys. Its dashboard uses HTTP for convenient initial LAN access, so use it only on a trusted LAN. **Do not forward port 20128 directly to the public internet.** Use a VPN or an authenticated HTTPS reverse proxy for remote access.
+- The firmware generates random secrets for 9Router and sets `REQUIRE_API_KEY=true`, then checks the actual unauthenticated API response at startup and when running `sudo dbai-ai-setup`. As upstream issue [#2834](https://github.com/decolua/9router/issues/2834) documents, some versions may ignore that environment flag; follow the runtime check and enable the Endpoint API-key requirement in the dashboard if needed.
+- Its dashboard uses HTTP for convenient initial LAN access, so use it only on a trusted LAN. **Do not forward port 20128 directly to the public internet.** Use a VPN or an authenticated HTTPS reverse proxy for remote access.
 - Provider accounts and credentials are user-supplied. The firmware does not guarantee that any provider or model has a free tier, and external API usage may incur charges.
 - The 9Router container tag is `latest`; `sudo dbai-ai-setup --update-router` pulls the currently published image. Review upstream release notes before updating production devices.
 
