@@ -33,18 +33,13 @@ on:
         required: true
         type: boolean
         default: false
-      cleanup_run_history:
-        description: "HAPUS permanen seluruh riwayat workflow run di repository (tidak membangun image)"
-        required: true
-        type: boolean
-        default: false
-      confirm_run_history_cleanup:
-        description: "Wajib pilih DELETE ALL RUN HISTORY untuk menjalankan penghapusan"
+      run_mode:
+        description: "Pilih build normal atau tindakan destruktif penghapusan riwayat run"
         required: true
         type: choice
-        default: NO
+        default: build
         options:
-          - NO
+          - build
           - DELETE ALL RUN HISTORY
       server:
         description: "Server: semua release dalam kelompok OS terpilih"
@@ -91,11 +86,16 @@ on:
         required: true
         type: boolean
         default: false
-      desktop:
-        description: "Desktop: semua DE kompatibel dan Openbox WM pada OS terpilih"
+      desktop_mode:
+        description: "Desktop: semua DE + Openbox, Openbox saja, pilihan DE khusus, atau tanpa desktop"
         required: true
-        type: boolean
-        default: true
+        type: choice
+        default: all
+        options:
+          - all
+          - openbox
+          - custom
+          - none
       desktop_xfce:
         description: "Desktop: XFCE pada release OS yang kompatibel"
         required: true
@@ -141,11 +141,6 @@ on:
         required: true
         type: boolean
         default: false
-      desktop_openbox:
-        description: "Window Manager: Openbox standalone (otomatis disertakan jika Desktop=semua)"
-        required: true
-        type: boolean
-        default: false
       proxmox_official:
         description: "Proxmox VE Official packages 9.x: Debian Trixie, kernel Armbian (eksperimental pada STB)"
         required: true
@@ -167,7 +162,7 @@ concurrency:
 jobs:
   prepare:
     name: Generate build matrix
-    if: inputs.cleanup_run_history != true
+    if: inputs.run_mode != 'DELETE ALL RUN HISTORY'
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -186,7 +181,7 @@ jobs:
           DOCKER_CE: ${{ inputs.docker_ce }}
           CASAOS: ${{ inputs.casaos }}
           CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
-          DESKTOP: ${{ inputs.desktop }}
+          DESKTOP_MODE: ${{ inputs.desktop_mode }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
@@ -196,7 +191,6 @@ jobs:
           DESKTOP_ENLIGHTENMENT: ${{ inputs.desktop_enlightenment }}
           DESKTOP_BUDGIE: ${{ inputs.desktop_budgie }}
           DESKTOP_LXQT: ${{ inputs.desktop_lxqt }}
-          DESKTOP_OPENBOX: ${{ inputs.desktop_openbox }}
           PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
           PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
         run: |
@@ -249,6 +243,9 @@ jobs:
 
           # Audited against armbian/configng desktop YAML: releases with ARM64 availability.
           # Supported and community variants are included; disabled/unsupported variants are excluded.
+          desktop_mode = os.environ.get("DESKTOP_MODE", "all").lower()
+          if desktop_mode not in {"all", "openbox", "custom", "none"}:
+              raise SystemExit(f"Invalid desktop mode: {desktop_mode}")
           desktop_variants = [
               ("xfce", "DESKTOP_XFCE", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
               ("mate", "DESKTOP_MATE", {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}),
@@ -263,11 +260,11 @@ jobs:
           selected_desktops = [
               (variant, supported_releases)
               for variant, key, supported_releases in desktop_variants
-              if truthy("DESKTOP") or truthy(key)
+              if desktop_mode == "all" or (desktop_mode == "custom" and truthy(key))
           ]
           # Openbox is a standalone WM stack, not an Armbian configng DESKTOP_ENVIRONMENT.
-          # Include it with the all-desktop group, or allow it to be selected separately.
-          select_openbox = truthy("DESKTOP") or truthy("DESKTOP_OPENBOX")
+          # "all" includes Openbox; "openbox" creates only the standalone WM stack.
+          select_openbox = desktop_mode in {"all", "openbox"}
           openbox_releases = {"bullseye", "bookworm", "trixie", "forky", "jammy", "noble", "resolute"}
 
           matrix = []
@@ -375,7 +372,7 @@ jobs:
               and selected["server"]
               and selected["minimal"]
               and select_all_apps
-              and truthy("DESKTOP")
+              and desktop_mode == "all"
           ):
               expected_default_jobs = (
                   170
@@ -416,7 +413,7 @@ jobs:
           SERVER: ${{ inputs.server }}
           MINIMAL: ${{ inputs.minimal }}
           APPLICATIONS: ${{ inputs.applications }}
-          DESKTOP: ${{ inputs.desktop }}
+          DESKTOP_MODE: ${{ inputs.desktop_mode }}
           SPEEDTEST: ${{ inputs.speedtest }}
           CASAOS: ${{ inputs.casaos }}
           CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
@@ -425,8 +422,8 @@ jobs:
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
-          echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop=$DESKTOP"
-          echo "Openbox WM checkbox: ${{ inputs.desktop_openbox }} (also included whenever desktop=all)"
+          echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop_mode=$DESKTOP_MODE"
+          echo "Desktop mode: $DESKTOP_MODE (all = all supported DEs + Openbox; openbox = standalone; custom = individual DE checkboxes; none = no desktop)"
           echo "CasaOS (Bookworm): $CASAOS"
           echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
           echo "Proxmox Official (Trixie): $PROXMOX_OFFICIAL"
@@ -435,7 +432,7 @@ jobs:
           echo "Build matrix generated."
 
   create_release:
-    if: inputs.cleanup_run_history != true
+    if: inputs.run_mode != 'DELETE ALL RUN HISTORY'
     needs: prepare
     runs-on: ubuntu-24.04
     permissions:
@@ -516,7 +513,7 @@ jobs:
           DOCKER_CE: ${{ inputs.docker_ce }}
           CASAOS: ${{ inputs.casaos }}
           CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
-          DESKTOP: ${{ inputs.desktop }}
+          DESKTOP_MODE: ${{ inputs.desktop_mode }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
           DESKTOP_GNOME: ${{ inputs.desktop_gnome }}
@@ -602,6 +599,7 @@ jobs:
             echo "- **OS branding:** `Armbian-DBAI-2K26` / `DBAI-2K26 <release>`"
             echo "- **VM Speedtest:** ${SPEEDTEST} (one test per build job when enabled)"
             echo "- **Selected profile groups:** ${category_title}"
+            echo "- **Desktop mode:** ${DESKTOP_MODE}"
             if [[ "$PROXMOX_OFFICIAL" == "true" ]]; then echo "- **Proxmox Official:** Proxmox VE 9 packages on Debian Trixie; retains Armbian kernel; experimental on Amlogic STB"; fi
             if [[ "$PROXMOX_COMMUNITY" == "true" ]]; then echo "- **Proxmox Community:** PXVIRT 8 on Debian Bookworm; retains Armbian kernel"; fi
             echo "- **Matrix jobs:** $(python3 -c 'import json,os; print(len(json.loads(os.environ["MATRIX_JSON"]).get("include", [])))')"
@@ -618,9 +616,11 @@ jobs:
               if [[ "$CASAOS" == "true" ]]; then echo '- **Application:** CasaOS on Bookworm ARM64 (official installer runs on first boot)'; fi
               if [[ "$CCTV_LIGHTNVR" == "true" ]]; then echo '- **CCTV:** LightNVR 0.43.2 with integrated go2rtc on Trixie ARM64'; fi
             fi
-            if [[ "$DESKTOP" == "true" ]]; then
-              echo '- **Profile:** all buildable Desktop environments on compatible selected OS releases'
-            else
+            if [[ "$DESKTOP_MODE" == "all" ]]; then
+              echo '- **Profile:** all buildable Desktop environments plus standalone Openbox WM on compatible selected OS releases'
+            elif [[ "$DESKTOP_MODE" == "openbox" ]]; then
+              echo '- **Window manager:** standalone Openbox WM'
+            elif [[ "$DESKTOP_MODE" == "custom" ]]; then
               if [[ "$DESKTOP_XFCE" == "true" ]]; then echo '- **Desktop:** XFCE on compatible selected OS releases'; fi
               if [[ "$DESKTOP_MATE" == "true" ]]; then echo '- **Desktop:** MATE on compatible selected OS releases'; fi
               if [[ "$DESKTOP_GNOME" == "true" ]]; then echo '- **Desktop:** GNOME on compatible selected OS releases'; fi
@@ -673,7 +673,7 @@ jobs:
           echo "image_version=$image_version" >> "$GITHUB_OUTPUT"
           echo "Prepared release: $release_title ($tag; image version $image_version)"
   build:
-    if: inputs.cleanup_run_history != true
+    if: inputs.run_mode != 'DELETE ALL RUN HISTORY'
     needs: [prepare, create_release]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
@@ -1113,7 +1113,7 @@ jobs:
 
   finalize_release:
     needs: [create_release, build]
-    if: always() && inputs.cleanup_run_history != true && needs.create_release.result == 'success'
+    if: always() && inputs.run_mode != 'DELETE ALL RUN HISTORY' && needs.create_release.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -1196,7 +1196,7 @@ jobs:
           echo "Published SHA256SUMS.txt; removed ${#checksum_assets[@]} current sidecars."
 
   cleanup_workflow_history:
-    if: inputs.cleanup_run_history == true
+    if: inputs.run_mode == 'DELETE ALL RUN HISTORY'
     name: Delete workflow run history
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1206,7 +1206,7 @@ jobs:
       - name: Permanently delete repository workflow runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CONFIRMATION: ${{ inputs.confirm_run_history_cleanup }}
+          CONFIRMATION: ${{ inputs.run_mode }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
