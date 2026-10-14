@@ -269,7 +269,8 @@ jobs:
           # Openbox is a standalone WM stack, not an Armbian configng DESKTOP_ENVIRONMENT.
           # "all" includes Openbox; "openbox" creates only the standalone WM stack.
           select_openbox = desktop_mode in {"all", "openbox"}
-          openbox_releases = {"bullseye", "bookworm", "trixie", "forky", "jammy", "noble", "resolute"}
+          # Bullseye is end-of-service here: Server/Minimal only, no Openbox Desktop variants.
+          openbox_releases = {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}
 
           matrix = []
           for fs in filesystems:
@@ -382,7 +383,7 @@ jobs:
               and desktop_mode == "all"
           ):
               expected_default_jobs = (
-                  170
+                  168
                   + len(filesystems) * int(proxmox_mode in {"official", "both"})
                   + len(filesystems) * int(proxmox_mode in {"community", "both"})
               )
@@ -508,11 +509,27 @@ jobs:
             echo "::error::Unsupported HTTPS URL detected for Proxmox no-subscription repository."
             exit 1
           fi
+          grep -Fq 'Enabled: no' extensions/proxmox-official.sh || {
+            echo "::error::Proxmox enterprise source must be disabled with a valid Deb822 field."
+            exit 1
+          }
+          grep -Fq 'https://us.mirrors.lierfang.com/pxcloud/pxvirt' extensions/proxmox-community.sh || {
+            echo "::error::PXVIRT US mirror fallback is missing."
+            exit 1
+          }
+          grep -Fq 'dists/bookworm/InRelease' extensions/proxmox-community.sh || {
+            echo "::error::PXVIRT mirror must pass Release-file preflight before use."
+            exit 1
+          }
+          grep -Fq 'openbox_releases = {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}' .github/workflows/armbian-build.yml || {
+            echo "::error::Openbox must not be scheduled for Bullseye; that release is limited to Server/Minimal."
+            exit 1
+          }
           grep -Fq 'network_applet_pkg="network-manager-applet"' extensions/desktop-openbox.sh || {
             echo "::error::Openbox must use network-manager-applet on Debian Forky."
             exit 1
           }
-          echo "Regression checks passed for Proxmox no-subscription URI and Openbox Forky package."
+          echo "Regression checks passed for Proxmox APT sources, PXVIRT mirror fallback and Openbox compatibility."
       - name: Create one release with selected profile title
         id: release
         env:
