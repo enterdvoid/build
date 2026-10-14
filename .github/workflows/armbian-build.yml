@@ -494,10 +494,25 @@ jobs:
                   raise SystemExit(f"Required Armbian extension '{extension}' not found for variant '{variant}'.")
           print(f"Preflight passed: board exists and all {len(extension_rows)} extension-enabled matrix entries map to available extensions.")
           PY
-          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh extensions/applications-casaos.sh extensions/cctv-lightnvr.sh; do
+          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh extensions/applications-casaos.sh extensions/cctv-lightnvr.sh extensions/desktop-openbox.sh; do
             bash -n "$extension"
             echo "Shell syntax OK: $extension"
           done
+
+          # Guard against known repo/package regressions observed in actual build logs.
+          grep -Fq 'URIs: http://download.proxmox.com/debian/pve' extensions/proxmox-official.sh || {
+            echo "::error::Proxmox no-subscription repository must use its supported HTTP endpoint; APT verifies signed metadata with the Proxmox keyring."
+            exit 1
+          }
+          if grep -Fq 'URIs: https://download.proxmox.com/debian/pve' extensions/proxmox-official.sh; then
+            echo "::error::Unsupported HTTPS URL detected for Proxmox no-subscription repository."
+            exit 1
+          fi
+          grep -Fq 'network_applet_pkg="network-manager-applet"' extensions/desktop-openbox.sh || {
+            echo "::error::Openbox must use network-manager-applet on Debian Forky."
+            exit 1
+          }
+          echo "Regression checks passed for Proxmox no-subscription URI and Openbox Forky package."
       - name: Create one release with selected profile title
         id: release
         env:
