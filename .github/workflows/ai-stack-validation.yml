@@ -53,7 +53,7 @@ jobs:
           ]
           with tempfile.TemporaryDirectory() as tmp:
               for tag, shell in blocks:
-match = re.search(r"<<'" + re.escape(tag) + r"'\n(.*?)\n" + re.escape(tag) + r"(?:\n|$)", source, re.DOTALL)
+                  match = re.search(r"<<'" + re.escape(tag) + r"'\n(.*?)\n" + re.escape(tag) + r"(?:\n|$)", source, re.DOTALL)
                   if not match:
                       raise SystemExit(f"Could not extract generated script {tag}.")
                   path = pathlib.Path(tmp) / f"{tag}.{shell}"
