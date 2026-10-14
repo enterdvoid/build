@@ -247,7 +247,7 @@ jobs:
 
           # Audited against armbian/configng desktop YAML: releases with ARM64 availability.
           # Supported and community variants are included; disabled/unsupported variants are excluded.
-          desktop_mode = os.environ.get("DESKTOP_MODE", "all").lower()
+          desktop_mode = os.environ.get("DESKTOP_MODE", "none").lower()
           if desktop_mode not in {"all", "openbox", "custom", "none"}:
               raise SystemExit(f"Invalid desktop mode: {desktop_mode}")
           desktop_variants = [
@@ -533,6 +533,10 @@ jobs:
             echo "::error::Desktop selection must default to none."
             exit 1
           fi
+          grep -Fq 'desktop_mode = os.environ.get("DESKTOP_MODE", "none").lower()' .github/workflows/armbian-build.yml || {
+            echo "::error::Desktop matrix fallback must also default to none."
+            exit 1
+          }
           grep -Fq 'openbox_releases = {"bookworm", "trixie", "forky", "jammy", "noble", "resolute"}' .github/workflows/armbian-build.yml || {
             echo "::error::Openbox must not be scheduled for Bullseye; that release is limited to Server/Minimal."
             exit 1
