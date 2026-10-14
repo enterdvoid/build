@@ -10,6 +10,7 @@ on:
       - "config/boards/aml-s9xx-box.tvb"
       - "docs/AI-STACK-FIRMWARE.md"
       - "docs/IMAGE-PARTITIONS-WINDOWS.md"
+      - "docs/PANDUAN-HERMES-9ROUTER.md"
       - "README.md"
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - "config/boards/aml-s9xx-box.tvb"
       - "docs/AI-STACK-FIRMWARE.md"
       - "docs/IMAGE-PARTITIONS-WINDOWS.md"
+      - "docs/PANDUAN-HERMES-9ROUTER.md"
       - "README.md"
   workflow_dispatch:
 
