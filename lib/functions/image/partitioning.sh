@@ -440,7 +440,12 @@ function prepare_partitions() {
 		display_alert "Creating /boot" "$bootfs on ${LOOP}p${bootpart}"
 		check_loop_device "${LOOP}p${bootpart}"
 		# shellcheck disable=SC2086 # mkopts must word-split into separate arguments (e.g. "-q -m 2" → two args)
-		run_host_command_logged "mkfs.${mkfs[$bootfs]}" ${mkopts[$bootfs]} ${mkopts_label[$bootfs]:+${mkopts_label[$bootfs]}"$BOOT_FS_LABEL"} "${LOOP}p${bootpart}"
+		if [[ "$BOARD" == "aml-s9xx-box" && "$bootfs" == "fat" ]]; then
+			# Keep the FAT32-LBA MBR partition type and the on-disk filesystem in agreement.
+			run_host_command_logged "mkfs.${mkfs[$bootfs]}" -F32 ${mkopts_label[$bootfs]:+${mkopts_label[$bootfs]}"$BOOT_FS_LABEL"} "${LOOP}p${bootpart}"
+		else
+			run_host_command_logged "mkfs.${mkfs[$bootfs]}" ${mkopts[$bootfs]} ${mkopts_label[$bootfs]:+${mkopts_label[$bootfs]}"$BOOT_FS_LABEL"} "${LOOP}p${bootpart}"
+		fi
 		mkdir -p "$MOUNT/boot/"
 		run_host_command_logged mount "${LOOP}p${bootpart}" "$MOUNT/boot/"
 		echo "UUID=$(blkid -s UUID -o value "${LOOP}p${bootpart}") /boot ${mkfs[$bootfs]} defaults${mountopts[$bootfs]} 0 2" >> "${SDCARD}/etc/fstab"
