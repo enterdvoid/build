@@ -39,6 +39,10 @@ cd build
 - Superuser privileges (`sudo` or root)
 - Up-to-date system (outdated Docker or other tools can cause failures)
 
+## DBAI Build Workflow
+
+This fork includes DBAI-specific image branding, versioning, GitHub Actions matrix builds, optional VM Speedtest, Openbox support, and release checksum handling. See the [DBAI Armbian Build documentation](docs/DBAI-ARMBIAN-BUILD.md) for configuration details and validation status.
+
 ## Resources
 
 - **[Documentation](https://docs.armbian.com/Developer-Guide_Overview/)** — Comprehensive guides for building, configuring, and customizing
