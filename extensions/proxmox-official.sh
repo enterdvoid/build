@@ -19,7 +19,8 @@ function post_repo_customize_image__dbai_install_proxmox_official() {
 
 	cat > "${SDCARD}/etc/apt/sources.list.d/pve-install-repo.sources" <<'PVE_OFFICIAL_SOURCES'
 Types: deb
-URIs: https://download.proxmox.com/debian/pve
+# Proxmox no-subscription repositories use HTTP; APT still verifies signed metadata/packages via Signed-By.
+URIs: http://download.proxmox.com/debian/pve
 Suites: trixie
 Components: pve-no-subscription
 Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
