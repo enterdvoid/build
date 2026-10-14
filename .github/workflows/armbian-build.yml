@@ -57,10 +57,16 @@ on:
         type: boolean
         default: true
       applications:
-        description: "Applications: semua aplikasi yang kompatibel dengan OS terpilih"
+        description: "Preset aplikasi: all = semua aplikasi termasuk 3 varian AI; none = hanya yang dicentang; atau pilih Hermes / 9Router / gabungan"
         required: true
-        type: boolean
-        default: true
+        type: choice
+        default: all
+        options:
+          - all
+          - none
+          - hermes
+          - 9router
+          - both
       home_assistant:
         description: "Application: Home Assistant (Bookworm/Trixie)"
         required: true
@@ -238,12 +244,32 @@ jobs:
               ("casaos", "applications-casaos", "CASAOS", {"bookworm"}),
               ("lightnvr-go2rtc", "cctv-lightnvr", "CCTV_LIGHTNVR", {"trixie"}),
           ]
-          select_all_apps = truthy("APPLICATIONS")
+          application_mode = os.environ.get("APPLICATIONS", "all").lower()
+          if application_mode not in {"all", "none", "hermes", "9router", "both"}:
+              raise SystemExit(f"Invalid application preset: {application_mode}")
+          select_all_apps = application_mode == "all"
           selected_apps = [
               (variant, extension, supported_releases)
               for variant, extension, key, supported_releases in app_variants
               if select_all_apps or truthy(key)
           ]
+
+          # AI variants are deliberately a single dropdown input so this workflow
+          # stays within GitHub Actions' 25-input limit. "all" selects all three;
+          # individual presets select one mode and remain additive with app checkboxes.
+          ai_stack_variants = [
+              ("hermes-agent", "ai-hermes", {"bookworm", "trixie", "jammy", "noble", "resolute"}),
+              ("9router", "ai-router9", {"bookworm", "trixie", "jammy", "noble", "resolute"}),
+              ("hermes-9router", "ai-hermes-router9", {"bookworm", "trixie", "jammy", "noble", "resolute"}),
+          ]
+          ai_preset_variants = {
+              "none": set(),
+              "hermes": {"hermes-agent"},
+              "9router": {"9router"},
+              "both": {"hermes-9router"},
+              "all": {variant for variant, _, _ in ai_stack_variants},
+          }
+          selected_ai_variants = ai_preset_variants[application_mode]
 
           # Audited against armbian/configng desktop YAML: releases with ARM64 availability.
           # Supported and community variants are included; disabled/unsupported variants are excluded.
@@ -294,6 +320,19 @@ jobs:
                           "filesystem": fs, "profile": "applications", "variant": variant,
                           "release": release,
                           "image_size": 8192,
+                          "build_desktop": "no", "build_minimal": "no",
+                          "extension": extension, "desktop_env": ""
+                      })
+
+              for variant, extension, supported_releases in ai_stack_variants:
+                  if variant not in selected_ai_variants:
+                      continue
+                  for release in releases:
+                      if release not in supported_releases:
+                          continue
+                      matrix.append({
+                          "filesystem": fs, "profile": "applications", "variant": variant,
+                          "release": release, "image_size": 8192,
                           "build_desktop": "no", "build_minimal": "no",
                           "extension": extension, "desktop_env": ""
                       })
@@ -383,7 +422,7 @@ jobs:
               and desktop_mode == "all"
           ):
               expected_default_jobs = (
-                  168
+                  198
                   + len(filesystems) * int(proxmox_mode in {"official", "both"})
                   + len(filesystems) * int(proxmox_mode in {"community", "both"})
               )
@@ -429,7 +468,8 @@ jobs:
         run: |
           echo "Filesystem(s): $FILESYSTEM_INPUT"
           echo "OS release group: $OS_GROUP_INPUT"
-          echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop_mode=$DESKTOP_MODE"
+          echo "Profile groups: server=$SERVER minimal=$MINIMAL desktop_mode=$DESKTOP_MODE"
+          echo "Application preset: $APPLICATIONS (all = all standard apps + Hermes/9Router variants; hermes / 9router / both = AI-only preset; none = individual app checkboxes only)"
           echo "Desktop mode: $DESKTOP_MODE (all = all supported DEs + Openbox; openbox = standalone; custom = individual DE checkboxes; none = no desktop)"
           echo "CasaOS (Bookworm): $CASAOS"
           echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
@@ -475,6 +515,9 @@ jobs:
               "proxmox-community": "proxmox-community",
               "casaos": "applications-casaos",
               "lightnvr-go2rtc": "cctv-lightnvr",
+              "hermes-agent": "ai-hermes",
+              "9router": "ai-router9",
+              "hermes-9router": "ai-hermes-router9",
           }
           root = pathlib.Path(".")
           extension_rows = [row for row in matrix.get("include", []) if row.get("extension")]
@@ -485,6 +528,8 @@ jobs:
                   raise SystemExit(f"Unknown extension-enabled variant in matrix: {variant!r}")
               if row.get("extension") != extension:
                   raise SystemExit(f"Variant {variant!r} expects extension {extension!r}, got {row.get('extension')!r}.")
+              if variant in {"hermes-agent", "9router", "hermes-9router"} and not (root / "extensions" / "ai-stack-common.sh").is_file():
+                  raise SystemExit(f"Shared AI extension helper is missing for variant {variant!r}.")
               candidates = (
                   root / "extensions" / f"{extension}.sh",
                   root / "extensions" / extension / f"{extension}.sh",
@@ -495,7 +540,7 @@ jobs:
                   raise SystemExit(f"Required Armbian extension '{extension}' not found for variant '{variant}'.")
           print(f"Preflight passed: board exists and all {len(extension_rows)} extension-enabled matrix entries map to available extensions.")
           PY
-          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh extensions/applications-casaos.sh extensions/cctv-lightnvr.sh extensions/desktop-openbox.sh; do
+          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh extensions/applications-casaos.sh extensions/cctv-lightnvr.sh extensions/desktop-openbox.sh extensions/ai-stack-common.sh extensions/ai-hermes.sh extensions/ai-router9.sh extensions/ai-hermes-router9.sh; do
             bash -n "$extension"
             echo "Shell syntax OK: $extension"
           done
@@ -545,7 +590,27 @@ jobs:
             echo "::error::Openbox must use network-manager-applet on Debian Forky."
             exit 1
           }
-          echo "Regression checks passed for Proxmox APT sources, PXVIRT /tmp permissions and mirror fallback, maintainer email, desktop default and Openbox compatibility."
+          grep -Fq 'ghcr.io/decolua/9router:latest' extensions/ai-stack-common.sh || {
+            echo "::error::The 9Router ARM64 container definition is missing."
+            exit 1
+          }
+          grep -Fq 'chmod 0600 "$ROUTER_ENV"' extensions/ai-stack-common.sh || {
+            echo "::error::9Router credentials must be stored with root-only permissions."
+            exit 1
+          }
+          grep -Fq 'https://hermes-agent.nousresearch.com/install.sh' extensions/ai-stack-common.sh || {
+            echo "::error::Hermes must use its official installer endpoint."
+            exit 1
+          }
+          grep -Fq 'providers.dbai-9router.api' extensions/ai-stack-common.sh || {
+            echo "::error::Hermes + 9Router integration setup is missing."
+            exit 1
+          }
+          grep -Fq 'application_mode = os.environ.get("APPLICATIONS", "all").lower()' .github/workflows/armbian-build.yml || {
+            echo "::error::Application preset parser is missing."
+            exit 1
+          }
+          echo "Regression checks passed for Proxmox APT sources, PXVIRT /tmp permissions and mirror fallback, maintainer email, desktop default, Openbox compatibility, and all AI-stack variants."
       - name: Create one release with selected profile title
         id: release
         env:
