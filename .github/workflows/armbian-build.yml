@@ -81,6 +81,16 @@ on:
         required: true
         type: boolean
         default: false
+      casaos:
+        description: "Application: CasaOS (Bookworm ARM64; installed automatically on first boot)"
+        required: true
+        type: boolean
+        default: false
+      cctv_lightnvr:
+        description: "CCTV: LightNVR + integrated go2rtc (Trixie ARM64; container pulls on first boot)"
+        required: true
+        type: boolean
+        default: false
       desktop:
         description: "Desktop: semua DE kompatibel dan Openbox WM pada OS terpilih"
         required: true
@@ -174,6 +184,8 @@ jobs:
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
+          CASAOS: ${{ inputs.casaos }}
+          CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
           DESKTOP: ${{ inputs.desktop }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
@@ -225,6 +237,8 @@ jobs:
               ("openmediavault", "applications-omv", "OPENMEDIAVAULT", {"bookworm", "trixie"}),
               ("kali", "applications-kali", "KALI", {"bookworm", "trixie", "forky"}),
               ("docker-ce", "docker-ce", "DOCKER_CE", {"bookworm", "trixie", "jammy", "noble", "resolute"}),
+              ("casaos", "applications-casaos", "CASAOS", {"bookworm"}),
+              ("lightnvr-go2rtc", "cctv-lightnvr", "CCTV_LIGHTNVR", {"trixie"}),
           ]
           select_all_apps = truthy("APPLICATIONS")
           selected_apps = [
@@ -276,7 +290,8 @@ jobs:
                           continue
                       matrix.append({
                           "filesystem": fs, "profile": "applications", "variant": variant,
-                          "release": release, "image_size": 8192,
+                          "release": release,
+                          "image_size": 16384 if variant in {"casaos", "lightnvr-go2rtc"} else 8192,
                           "build_desktop": "no", "build_minimal": "no",
                           "extension": extension, "desktop_env": ""
                       })
@@ -363,7 +378,7 @@ jobs:
               and truthy("DESKTOP")
           ):
               expected_default_jobs = (
-                  166
+                  170
                   + len(filesystems) * int(truthy("PROXMOX_OFFICIAL"))
                   + len(filesystems) * int(truthy("PROXMOX_COMMUNITY"))
               )
@@ -403,6 +418,8 @@ jobs:
           APPLICATIONS: ${{ inputs.applications }}
           DESKTOP: ${{ inputs.desktop }}
           SPEEDTEST: ${{ inputs.speedtest }}
+          CASAOS: ${{ inputs.casaos }}
+          CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
           PROXMOX_OFFICIAL: ${{ inputs.proxmox_official }}
           PROXMOX_COMMUNITY: ${{ inputs.proxmox_community }}
         run: |
@@ -410,6 +427,8 @@ jobs:
           echo "OS release group: $OS_GROUP_INPUT"
           echo "Profile groups: server=$SERVER minimal=$MINIMAL applications=$APPLICATIONS desktop=$DESKTOP"
           echo "Openbox WM checkbox: ${{ inputs.desktop_openbox }} (also included whenever desktop=all)"
+          echo "CasaOS (Bookworm): $CASAOS"
+          echo "LightNVR + integrated go2rtc (Trixie): $CCTV_LIGHTNVR"
           echo "Proxmox Official (Trixie): $PROXMOX_OFFICIAL"
           echo "Proxmox Community/PXVIRT 8 (Bookworm): $PROXMOX_COMMUNITY"
           echo "VM Speedtest enabled: $SPEEDTEST"
@@ -451,6 +470,8 @@ jobs:
               "openbox": "desktop-openbox",
               "proxmox-official": "proxmox-official",
               "proxmox-community": "proxmox-community",
+              "casaos": "applications-casaos",
+              "lightnvr-go2rtc": "cctv-lightnvr",
           }
           root = pathlib.Path(".")
           extension_rows = [row for row in matrix.get("include", []) if row.get("extension")]
@@ -471,7 +492,7 @@ jobs:
                   raise SystemExit(f"Required Armbian extension '{extension}' not found for variant '{variant}'.")
           print(f"Preflight passed: board exists and all {len(extension_rows)} extension-enabled matrix entries map to available extensions.")
           PY
-          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh; do
+          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh extensions/applications-casaos.sh extensions/cctv-lightnvr.sh; do
             bash -n "$extension"
             echo "Shell syntax OK: $extension"
           done
@@ -493,6 +514,8 @@ jobs:
           OPENMEDIAVAULT: ${{ inputs.openmediavault }}
           KALI: ${{ inputs.kali }}
           DOCKER_CE: ${{ inputs.docker_ce }}
+          CASAOS: ${{ inputs.casaos }}
+          CCTV_LIGHTNVR: ${{ inputs.cctv_lightnvr }}
           DESKTOP: ${{ inputs.desktop }}
           DESKTOP_XFCE: ${{ inputs.desktop_xfce }}
           DESKTOP_MATE: ${{ inputs.desktop_mate }}
@@ -592,6 +615,8 @@ jobs:
               if [[ "$OPENMEDIAVAULT" == "true" ]]; then echo '- **Application:** OpenMediaVault on supported releases'; fi
               if [[ "$KALI" == "true" ]]; then echo '- **Application:** Kali on Debian releases'; fi
               if [[ "$DOCKER_CE" == "true" ]]; then echo '- **Application:** Docker CE on supported Debian/Ubuntu releases'; fi
+              if [[ "$CASAOS" == "true" ]]; then echo '- **Application:** CasaOS on Bookworm ARM64 (official installer runs on first boot)'; fi
+              if [[ "$CCTV_LIGHTNVR" == "true" ]]; then echo '- **CCTV:** LightNVR 0.43.2 with integrated go2rtc on Trixie ARM64'; fi
             fi
             if [[ "$DESKTOP" == "true" ]]; then
               echo '- **Profile:** all buildable Desktop environments on compatible selected OS releases'
@@ -613,6 +638,8 @@ jobs:
             echo '- Home Assistant and OpenMediaVault: Debian Bookworm/Trixie.'
             echo '- Kali: Debian Bookworm/Trixie/Forky only.'
             echo '- Docker CE: Debian Bookworm/Trixie and Ubuntu Jammy/Noble/Resolute.'
+            echo '- CasaOS: Debian Bookworm ARM64; official installer runs from a systemd first-boot service and requires internet on first boot. CasaOS images use a 16384 MiB raw image target.'
+            echo '- LightNVR + go2rtc: Debian Trixie ARM64; pinned LightNVR container includes/manages go2rtc, pulled by the first-boot systemd service. CCTV images use a 16384 MiB raw image target.'
             echo '- Desktop group builds XFCE, MATE, GNOME, Cinnamon, KDE Plasma, i3-wm, Enlightenment, Budgie, and LXQt only where Armbian configng declares ARM64 availability for that release.'
             echo '- Openbox is provided as a separate lightweight X11 window-manager session with LightDM, LXPanel, PCManFM, LXTerminal and NetworkManager tray support; it does not rely on DESKTOP_ENVIRONMENT.'
             echo '- KDE Neon, Xmonad, and Deepin are skipped because current Armbian configng marks them unsupported or disabled.'
@@ -624,7 +651,7 @@ jobs:
             echo '- **Board:** `aml-s9xx-box`'
             echo '- **Kernel branch:** `current`'
             echo '- **Boot partition request:** 256 MiB'
-            echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop 8192 MiB'
+            echo '- **Requested raw image size:** Server/Minimal 4096 MiB; standard Applications/Desktop 8192 MiB; CasaOS/CCTV 16384 MiB; Proxmox 12288 MiB'
             echo '- **Image output:** compressed XZ when produced by Armbian Builder, with SHA-256 checksum'
             echo
             echo '## Integrity and availability'
