@@ -41,7 +41,7 @@ cd build
 
 ## DBAI Build Workflow
 
-This fork includes DBAI-specific image branding, versioning, GitHub Actions matrix builds, optional VM Speedtest, Openbox support, and release checksum handling. See the [DBAI Armbian Build documentation](docs/DBAI-ARMBIAN-BUILD.md) for configuration details and validation status.
+This fork includes DBAI-specific image branding, versioning, GitHub Actions matrix builds, optional VM Speedtest, Openbox support, separate Proxmox VE Official and PXVIRT Community image options, and release checksum handling. See the [DBAI Armbian Build documentation](docs/DBAI-ARMBIAN-BUILD.md) for configuration details and validation status.
 
 ## Resources
 
