@@ -89,6 +89,37 @@ jobs:
             echo "::error::Amlogic FAT boot partition must use MBR type 0x0C (FAT32-LBA)."
             exit 1
           }
+          grep -Fq '"mkfs.${mkfs[$bootfs]}" -F32' lib/functions/image/partitioning.sh || {
+            echo "::error::Amlogic FAT boot partition must be explicitly formatted as FAT32."
+            exit 1
+          }
+          grep -Fq 'sfdisk --json "$raw_image"' .github/workflows/armbian-build.yml || {
+            echo "::error::Build workflow must verify the final image partition table before publishing."
+            exit 1
+          }
+          grep -Fq 'blkid -s TYPE -o value "$boot_partition"' .github/workflows/armbian-build.yml || {
+            echo "::error::Build workflow must verify the FAT boot filesystem before publishing."
+            exit 1
+          }
+          python3 - <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import textwrap
+
+          workflow = pathlib.Path(".github/workflows/armbian-build.yml").read_text(encoding="utf-8")
+          match = re.search(
+              r"(?ms)^      - name: Prepare image and checksum for release\\n.*?^        run: \\|\\n(.*?)(?=^      - name:|\\Z)",
+              workflow,
+          )
+          if not match:
+              raise SystemExit("Could not locate the image preparation/QA shell block.")
+          script = textwrap.dedent(match.group(1))
+          result = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+          if result.returncode:
+              raise SystemExit(f"Image preparation/QA shell syntax failed:\\n{result.stderr}")
+          print("Image preparation/QA shell syntax OK.")
+          PY
           grep -Fq 'local type="ea"' lib/functions/image/partitioning.sh || {
             echo "::error::Generic Linux XBOOTLDR type must remain available for other boards."
             exit 1
