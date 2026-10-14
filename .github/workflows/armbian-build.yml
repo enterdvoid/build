@@ -1177,7 +1177,7 @@ jobs:
           trap cleanup_image_validation EXIT
 
           if [[ "$image" == *.img.xz ]]; then
-            temp_raw="$(mktemp "$RUNNER_TEMP/dbai-verify.XXXXXX.img")"
+            temp_raw="$(mktemp "$GITHUB_WORKSPACE/dbai-verify.XXXXXX.img")"
             echo "Decompressing image temporarily for partition-table QA..."
             xz --decompress --stdout -- "$image" > "$temp_raw"
             raw_image="$temp_raw"
