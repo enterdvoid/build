@@ -73,7 +73,7 @@ if [[ "$apt_updated" != true ]]; then
 	exit 1
 fi
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	ca-certificates curl git python3 python3-venv python3-pip build-essential ripgrep openssl
+	ca-certificates curl git xz-utils python3 python3-venv python3-pip build-essential ripgrep openssl
 
 router_enabled=false
 hermes_enabled=false
@@ -135,6 +135,29 @@ if [[ "$router_enabled" == true ]]; then
 		exit 1
 	fi
 	echo "9Router container started; dashboard listens on port 20128."
+
+	# Verify that the service is responding, then check the unauthenticated API gate.
+	# Some upstream 9Router releases document REQUIRE_API_KEY but do not apply it
+	# to runtime settings; do not claim the gateway is API-protected without testing.
+	api_status=""
+	for attempt in {1..30}; do
+		api_status="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 http://127.0.0.1:20128/v1/models 2>/dev/null || true)"
+		[[ "$api_status" != "000" ]] && break
+		sleep 2
+	done
+	case "$api_status" in
+		401|403)
+			echo "Unauthenticated /v1/models check returned $api_status; API-key gate appears active."
+			;;
+		200)
+			echo "SECURITY WARNING: unauthenticated /v1/models returned HTTP 200 even though REQUIRE_API_KEY=true."
+			echo "Open the 9Router dashboard, locate the Endpoint/API-key requirement setting, enable it, and verify this endpoint returns HTTP 401/403 without a token."
+			echo "Keep this instance on a trusted LAN; do not forward port 20128 to the internet."
+			;;
+		*)
+			echo "WARNING: unable to verify the 9Router unauthenticated API response (HTTP $api_status). Recheck security in the dashboard."
+			;;
+	esac
 fi
 
 if [[ "$hermes_enabled" == true ]]; then
