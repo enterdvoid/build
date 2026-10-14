@@ -45,11 +45,25 @@ PVE_OFFICIAL_PIN
 	rm -f "${SDCARD}/tmp/dbai-proxmox-postfix.preseed"
 
 	if [[ -f "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources" ]]; then
-		if grep -q '^Enabled:' "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"; then
-			sed -i 's/^Enabled:.*/Enabled: false/' "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"
-		else
-			printf '\nEnabled: false\n' >> "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources"
-		fi
+		# Disable the enterprise source within its existing Deb822 stanza. An empty
+		# line before Enabled creates a second malformed stanza (APT: missing Types).
+		python3 - "${SDCARD}/etc/apt/sources.list.d/pve-enterprise.sources" <<'PVE_DISABLE_ENTERPRISE'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+while lines and not lines[-1].strip():
+    lines.pop()
+enabled = [i for i, line in enumerate(lines) if line.startswith("Enabled:")]
+if enabled:
+    lines[enabled[0]] = "Enabled: no"
+    for index in reversed(enabled[1:]):
+        del lines[index]
+else:
+    lines.append("Enabled: no")
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PVE_DISABLE_ENTERPRISE
 	fi
 
 	dbai_proxmox_add_firstboot_hostname_service
