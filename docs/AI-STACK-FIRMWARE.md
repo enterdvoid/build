@@ -6,18 +6,30 @@ The AI firmware variants are ARM64 images for `aml-s9xx-box`. Supported releases
 
 In **DBAI Armbian Build → Applications preset**:
 
-| Preset | Output |
+| Pilihan di menu | Arti sebenarnya |
 |---|---|
-| `all` | All standard application variants plus Hermes-only, 9Router-only, and combined Hermes + 9Router images |
-| `ai-all` | Select all three AI application variants; Server/Minimal/Desktop choices still apply independently |
-| `hermes` | Hermes Agent only (other individually checked application options are still additive) |
-| `9router` | 9Router only (other individually checked application options are still additive) |
-| `both` | Hermes Agent + 9Router in one image (other individually checked application options are still additive) |
-| `none` | Only the individually checked application options |
+| `all — Semua aplikasi standar + 3 varian AI` | Membuat **semua aplikasi standar** (Home Assistant, OpenMediaVault, Kali, Docker CE, CasaOS, LightNVR jika release cocok) **dan semua 3 varian AI**. Checkbox aplikasi standar di bawahnya diabaikan karena semua aplikasi standar sudah dipilih. |
+| `ai-all — 3 varian AI + aplikasi yang dicentang` | Membuat **Hermes saja, 9Router saja, dan gabungan Hermes + 9Router**. Checkbox aplikasi standar yang dicentang tetap ikut dibuat; yang tidak dicentang tidak ikut. |
+| `none — Hanya aplikasi yang dicentang (tanpa preset AI)` | Tidak otomatis menambahkan varian AI atau semua aplikasi standar. Hanya aplikasi standar yang dicentang di bawahnya yang dibuat. Jika tidak ada checkbox aplikasi dipilih, tidak ada image aplikasi dari bagian ini. |
+| `hermes — Hermes + aplikasi yang dicentang` | Varian Hermes saja, ditambah aplikasi standar yang dicentang. |
+| `9router — 9Router + aplikasi yang dicentang` | Varian 9Router saja, ditambah aplikasi standar yang dicentang. |
+| `both — Hermes + 9Router (satu image) + aplikasi yang dicentang` | Satu image yang mengintegrasikan Hermes dan 9Router, ditambah aplikasi standar yang dicentang. |
+
+**Penting:** pilihan ini hanya mengatur kelompok aplikasi. Checkbox **Server**, **Minimal**, dan pilihan **Desktop** terpisah dan tetap berpengaruh. Dengan default saat ini, `all` dipilih, sedangkan Server dan Minimal juga dicentang. Jadi untuk build hanya tiga varian AI, pilih `ai-all`, matikan Server dan Minimal, biarkan checkbox aplikasi standar tidak dicentang, dan pastikan Desktop mode = `none`.
 
 AI variant asset names include `hermes-agent`, `9router`, or `hermes-9router`. AI selections deliberately reuse the existing Applications input, preserving GitHub Actions' 25-input limit.
 
 For a focused first test, choose `ai-all`, uncheck the **Server** and **Minimal** profile boxes (both are checked by default), leave individual application boxes unchecked, keep Desktop mode at `none`, and choose one OS release and filesystem. This builds all three AI variants without extra profiles. Select both filesystems and OS group `all` when you want every supported AI image.
+
+## Is there an AI desktop firmware?
+
+**Not yet as a single integrated desktop image.** The three AI extensions currently generate headless/server-style application images. Selecting a Desktop/DE mode in the same Actions run generates separate desktop images; it does not inject Hermes/9Router into those desktop images.
+
+- **9Router** already provides a browser dashboard. On the AI image it is reachable on the trusted LAN at `http://<device-IP>:20128/dashboard`.
+- **Hermes** is currently installed as a CLI/headless agent in this firmware (the installer runs with `--skip-browser`). The upstream project also documents a native desktop app for Linux, Windows, and macOS, plus a web dashboard; see the [official Hermes Desktop documentation](https://hermes-agent.nousresearch.com/docs/user-guide/desktop) and [Web Dashboard documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/web-dashboard).
+- The upstream Linux desktop app has **not** yet been built and validated as an integrated GUI for this project's Amlogic ARM64 Armbian desktop image. Do not assume that choosing a DE today gives you a desktop image with the AI stack preinstalled.
+
+To create a true AI desktop firmware, the build matrix needs an explicit combined target that installs the chosen DE and the AI extension in the **same** output image, followed by an ARM64 GUI build and first-login test. Until that work is done, choose either the headless AI variant or a regular desktop image.
 
 ## First boot: automatic provisioning
 
