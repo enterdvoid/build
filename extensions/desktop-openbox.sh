@@ -16,6 +16,13 @@ function extension_prepare_config__openbox() {
 function post_repo_customize_image__install_openbox_session() {
 	display_alert "Installing Openbox standalone graphical session" "${EXTENSION}" "info"
 
+	# Debian Forky ships network-manager-applet directly; the old
+	# network-manager-gnome transitional package has no arm64 candidate there.
+	local network_applet_pkg="network-manager-gnome"
+	if [[ "${RELEASE}" == "forky" ]]; then
+		network_applet_pkg="network-manager-applet"
+	fi
+
 	chroot_sdcard_apt_get_install \
 		dbus-x11 \
 		fonts-dejavu-core \
@@ -25,7 +32,7 @@ function post_repo_customize_image__install_openbox_session() {
 		lxpanel \
 		lxpolkit \
 		lxterminal \
-		network-manager-gnome \
+		"${network_applet_pkg}" \
 		openbox \
 		pcmanfm \
 		x11-xserver-utils \
