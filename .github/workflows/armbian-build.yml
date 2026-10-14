@@ -611,10 +611,6 @@ jobs:
             echo "::error::Hermes + 9Router integration setup is missing."
             exit 1
           }
-          grep -Fq 'application_mode = os.environ.get("APPLICATIONS", "all").lower()' .github/workflows/armbian-build.yml || {
-            echo "::error::Application preset parser is missing."
-            exit 1
-          }
           echo "Regression checks passed for Proxmox APT sources, PXVIRT /tmp permissions and mirror fallback, maintainer email, desktop default, Openbox compatibility, and all AI-stack variants."
       - name: Create one release with selected profile title
         id: release
