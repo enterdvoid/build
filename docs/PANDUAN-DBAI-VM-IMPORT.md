@@ -52,7 +52,7 @@ Format akhir yang benar-benar dapat dibaca diverifikasi oleh `qemu-img info`; ek
 
 ## 4. Jaringan dan keamanan
 
-- Wizard hanya menawarkan storage aktif yang menerima content `images`. Output kapasitas menggunakan nilai KiB dari `pvesm status` yang dikonversi ke GiB. Jika versi script lama menampilkan `0.0 GiB`, unduh script terbaru dan ulangi `dbai-vm-import --check`; verifikasi kapasitas aktual dengan `pvesm status --content images` dan `df -hT /var/lib/vz`.
+- Wizard hanya menawarkan storage aktif yang menerima content `images`. Output kapasitas menggunakan nilai KiB dari `pvesm status` yang dikonversi ke GiB. Jika versi script lama menampilkan `0.0 GiB`, unduh script terbaru dan ulangi `dbai-vm-import --check`; verifikasi kapasitas aktual dengan `pvesm status --content images` dan `df -hT /var/lib/vz`. Ukuran virtual disk yang ditampilkan `qemu-img info` berbeda: nilainya dalam byte dan dikonversi melalui formatter tersendiri.
 - Wizard mendeteksi bridge Linux yang sudah ada, misalnya `vmbr0`. Ia tidak berasumsi bahwa nama itu pasti tersedia.
 - Wizard **tidak membuat atau mengganti konfigurasi jaringan host**. Jika tidak ada bridge, pengguna dapat membuat VM tanpa NIC dan mengatur jaringan kemudian melalui Web UI.
 - Start VM tidak otomatis dilakukan secara default. Tinjau ringkasan konfigurasi lebih dahulu.
