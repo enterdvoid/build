@@ -94,6 +94,36 @@ qm status 100
 
 Jika storage tidak muncul, buka **Datacenter → Storage** dan pastikan tipe storage aktif serta content **Disk image** diaktifkan. Jika tidak ada bridge, atur bridge secara terpisah dengan mengikuti panduan jaringan yang sesuai untuk pengelola jaringan firmware tersebut. Jangan mengubah NIC host secara otomatis saat terhubung melalui SSH tanpa mekanisme pemulihan.
 
+### Pemulihan jika `apt install qemu-utils` menghapus Proxmox
+
+Pada PXVIRT/Proxmox, `pve-qemu-kvm` membawa utilitas seperti `qemu-img` dan berkonflik dengan paket Debian `qemu-utils`. Jika APT sudah menghapus `pve-manager`, `qemu-server`, atau `pve-qemu-kvm`, **jangan reboot dan jangan jalankan `apt autoremove`**.
+
+Pertama, tampilkan rencana pemulihan tanpa mengubah paket:
+
+```bash
+apt-get update
+apt-get -s install pve-manager pve-qemu-kvm qemu-server pve-container pve-ha-manager spiceterm
+```
+
+Periksa simulasi. Yang diharapkan adalah APT memasang kembali paket Proxmox tersebut dan menghapus `qemu-utils` yang konflik. Jika simulasi ingin menghapus paket penting tambahan, jangan lanjutkan; simpan output untuk diagnosis.
+
+Jika rencana terlihat benar, jalankan:
+
+```bash
+apt-get install pve-manager pve-qemu-kvm qemu-server pve-container pve-ha-manager spiceterm
+```
+
+Setelah selesai, verifikasi:
+
+```bash
+command -v qm
+command -v qemu-img
+pveversion
+systemctl --no-pager --full status pve-cluster pvedaemon pveproxy
+```
+
+Jangan jalankan `apt autoremove` saat proses pemulihan ini. Daftar paket yang dilabeli otomatis tidak lagi diperlukan dapat mencakup banyak dependensi hypervisor yang perlu dikembalikan.
+
 ## 7. Instalasi saat build firmware
 
 Workflow `DBAI Armbian Build` menyertakan script dan dependensi ketika membangun salah satu varian Proxmox:
