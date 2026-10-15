@@ -148,7 +148,7 @@ jobs:
 
           def sanitize(value):
               result = subprocess.run(
-                  ["bash", "-c", sanitizer + '\\nprintf "%s" "$(sanitize_vm_name "$1")"\\n', "_", value],
+                  ["bash", "-c", sanitizer + '\nprintf "%s" "$(sanitize_vm_name "$1")"\n', "_", value],
                   text=True, capture_output=True, check=True
               )
               return result.stdout
