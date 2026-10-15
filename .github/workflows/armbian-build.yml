@@ -568,7 +568,7 @@ jobs:
             exit 1
           }
           for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh; do
-            grep -Fq 'chroot_sdcard_apt_get_install qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3' "$extension" || {
+            grep -Fq 'chroot_sdcard_apt_get_install curl wget whiptail unzip xz-utils zstd gzip bzip2 python3' "$extension" || {
               echo "::error::Proxmox extensions must install DBAI VM importer dependencies."
               exit 1
             }
