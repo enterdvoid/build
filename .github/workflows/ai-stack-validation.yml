@@ -141,6 +141,34 @@ jobs:
           import pathlib
           import subprocess
 
+          text = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8")
+          start = text.index("sanitize_vm_name() {")
+          end = text.index("\n}\n\ncheck_vm_name()", start) + 2
+          sanitizer = text[start:end]
+
+          def sanitize(value):
+              result = subprocess.run(
+                  ["bash", "-c", sanitizer + '\\nprintf "%s" "$(sanitize_vm_name "$1")"\\n', "_", value],
+                  text=True, capture_output=True, check=True
+              )
+              return result.stdout
+
+          cases = {
+              "OpenWrt 25.12.5": "OpenWrt-25.12.5",
+              ".bad name?": "bad-name",
+              "   ": "dbai-vm",
+              "a" * 80: "a" * 63,
+          }
+          for original, expected in cases.items():
+              actual = sanitize(original)
+              if actual != expected:
+                  raise SystemExit(f"VM name sanitizer failed for {original!r}: {actual!r} != {expected!r}")
+          print("VM name normalization tests passed.")
+          PY
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
           source = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8").splitlines()
           disk_ref_line = next((line for line in source if 'disk_ref="$(qm config' in line), "")
           unused_line = next((line for line in source if 'unused="$(qm config' in line), "")
