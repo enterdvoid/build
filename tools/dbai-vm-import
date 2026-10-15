@@ -261,6 +261,92 @@ is_disk_candidate() {
   esac
 }
 
+# Return the recognized input suffix, including compression when present.
+# Empty output means the file is not a supported disk/container type.
+supported_suffix() {
+  local name="\${1##*/}" lower core compression="" disk_suffix=""
+  lower="\${name,,}"
+  core="$lower"
+  case "$core" in
+    *.gz|*.xz|*.zst|*.bz2)
+      compression=".${core##*.}"
+      core="\${core%.*}"
+      ;;
+  esac
+  case "$core" in
+    *.img) disk_suffix=".img" ;;
+    *.raw) disk_suffix=".raw" ;;
+    *.qcow2) disk_suffix=".qcow2" ;;
+    *.vdi) disk_suffix=".vdi" ;;
+    *.vmdk) disk_suffix=".vmdk" ;;
+    *.vhd) disk_suffix=".vhd" ;;
+    *.vhdx) disk_suffix=".vhdx" ;;
+  esac
+  if [[ -n "$disk_suffix" ]]; then
+    printf '%s%s' "$disk_suffix" "$compression"
+    return 0
+  fi
+  case "$lower" in
+    *.zip) printf '.zip'; return 0 ;;
+    *.ova) printf '.ova'; return 0 ;;
+    *.ovf) printf '.ovf'; return 0 ;;
+  esac
+  return 1
+}
+
+is_supported_input() {
+  local suffix
+  suffix="$(supported_suffix "$1" 2>/dev/null || true)"
+  [[ -n "$suffix" ]]
+}
+
+format_file_size() {
+  awk -v n="\${1:-0}" 'BEGIN {
+    split("B KiB MiB GiB TiB", u, " ");
+    i=1;
+    while (n>=1024 && i<5) { n/=1024; i++ }
+    printf "%.1f %s", n, u[i]
+  }'
+}
+
+select_local_image() {
+  local directory="\${1:-/root}" file suffix size_bytes name selected
+  local -a candidates=() options=()
+
+  [[ -d "$directory" ]] || die "Folder tidak ditemukan: $directory"
+  directory="$(readlink -f -- "$directory")"
+
+  while IFS= read -r -d '' file; do
+    suffix="$(supported_suffix "$file" 2>/dev/null || true)"
+    [[ -n "$suffix" ]] || continue
+    size_bytes="$(stat -c '%s' -- "$file" 2>/dev/null || printf '0')"
+    name="$(basename -- "$file")"
+    candidates+=("$file")
+    options+=("$file" "$name  |  $suffix  |  $(format_file_size "$size_bytes")")
+  done < <(find "$directory" -maxdepth 1 -type f -print0 | sort -z)
+
+  if (("\${#candidates[@]}" == 0)); then
+    die "Tidak ada image yang didukung di '$directory'. Dicari: .img/.raw/.qcow2/.vdi/.vmdk/.vhd/.vhdx, kompresi .gz/.xz/.zst/.bz2, serta .zip/.ova/.ovf."
+  fi
+
+  info "Image yang cocok ditemukan di $directory: \${#candidates[@]}"
+  selected="$(ui_menu "$APP_NAME" "Pilih SATU file image yang akan diimpor:" "\${options[@]}")" || die "Pemilihan image lokal dibatalkan."
+  [[ -f "$selected" && -r "$selected" ]] || die "File yang dipilih tidak tersedia atau tidak bisa dibaca: $selected"
+  is_supported_input "$selected" || die "Ekstensi file tidak didukung: $selected"
+  printf '%s' "$selected"
+}
+
+resolve_local_input() {
+  local value="$1"
+  if [[ -d "$value" ]]; then
+    select_local_image "$value"
+    return
+  fi
+  [[ -f "$value" && -r "$value" ]] || die "File/folder tidak ditemukan atau tidak bisa dibaca: $value"
+  is_supported_input "$value" || die "Jenis file '$value' tidak didukung. Gunakan .img/.img.gz/.img.xz/.vdi/.vdi.xz/.qcow2/.vmdk/.vhdx, arsip yang didukung, atau pilih unduh via URL."
+  readlink -f -- "$value"
+}
+
 select_candidate() {
   local -a candidates=("$@")
   local -a options=()
@@ -516,14 +602,20 @@ do_import() {
 }
 
 interactive_wizard() {
-  local source default_name vmid name memory cores start
+  local source_mode source_input source default_name vmid name memory cores start
   local -a menu=(
     "import" "Impor disk image dan buat VM"
     "diagnose" "Periksa storage, bridge, KVM, dan versi Proxmox"
     "quit" "Keluar"
   )
+  local -a source_menu=(
+    "local-select" "Pilih dari daftar file lokal (folder default /root)"
+    "local-path" "Masukkan path file tertentu atau folder"
+    "url" "Unduh image dari URL HTTP(S)"
+  )
   local action
-  action="$(ui_menu "$APP_NAME" "Apa yang ingin dilakukan?" "${menu[@]}")" || exit 0
+
+  action="$(ui_menu "$APP_NAME" "Apa yang ingin dilakukan?" "\${menu[@]}")" || exit 0
   case "$action" in
     diagnose) check_host; return ;;
     quit) return ;;
@@ -531,8 +623,27 @@ interactive_wizard() {
     *) die "Menu tidak dikenal." ;;
   esac
 
-  source="$(ui_input "$APP_NAME" "Masukkan path file lokal atau URL HTTPS/HTTP:" "")" || exit 0
-  [[ -n "$source" ]] || die "Path/URL tidak boleh kosong."
+  source_mode="$(ui_menu "$APP_NAME" "Pilih sumber image:" "\${source_menu[@]}")" || exit 0
+  case "$source_mode" in
+    local-select)
+      source_input="$(ui_input "$APP_NAME" "Folder lokal untuk mencari image yang didukung:" "/root")" || exit 0
+      source_input="\${source_input:-/root}"
+      source="$(select_local_image "$source_input")"
+      ;;
+    local-path)
+      source_input="$(ui_input "$APP_NAME" "Masukkan path file image atau folder lokal:" "/root")" || exit 0
+      [[ -n "$source_input" ]] || source_input="/root"
+      source="$(resolve_local_input "$source_input")"
+      ;;
+    url)
+      source="$(ui_input "$APP_NAME" "Masukkan URL langsung file image HTTP(S):" "")" || exit 0
+      [[ "$source" =~ ^https?:// ]] || die "URL harus dimulai dengan http:// atau https://."
+      ;;
+    *)
+      die "Pilihan sumber image tidak dikenal."
+      ;;
+  esac
+
   default_name="$(default_name_from_source "$source")"
   vmid="$(ui_input "$APP_NAME" "VMID yang akan digunakan:" "$(next_vmid)")" || exit 0
   name="$(ui_input "$APP_NAME" "Nama VM:" "$default_name")" || exit 0
