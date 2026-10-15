@@ -78,6 +78,9 @@ PXVIRT_PIN
 	chroot_sdcard_apt_get_install pve-manager pve-qemu-kvm qemu-server pve-cluster pve-container postfix open-iscsi chrony
 	rm -f "${SDCARD}/tmp/dbai-pxvirt-postfix.preseed"
 
+	# Keep the same VM image-import workflow on the community Proxmox variant.
+	chroot_sdcard_apt_get_install qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3
+	run_host_command_logged install -m 0755 tools/dbai-vm-import "${SDCARD}/usr/local/sbin/dbai-vm-import"
 	dbai_proxmox_add_firstboot_hostname_service
 }
 
