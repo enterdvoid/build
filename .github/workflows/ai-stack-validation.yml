@@ -115,6 +115,10 @@ jobs:
             }
           done
           grep -Fq 'pvesm status --content images' tools/dbai-vm-import
+          grep -Fq 'n/1048576' tools/dbai-vm-import || {
+            echo "::error::Importer must convert pvesm status capacity from KiB to GiB correctly."
+            exit 1
+          }
           grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import
           grep -Fq 'the tool never rewrites host network config' tools/dbai-vm-import
           test -s docs/PANDUAN-DBAI-VM-IMPORT.md
