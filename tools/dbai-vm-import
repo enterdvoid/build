@@ -65,8 +65,8 @@ require_core_commands() {
 
 ui_input() {
   local title="$1" prompt="$2" default="${3-}" answer
-  if has_cmd whiptail && [[ -t 0 && -t 1 ]]; then
-    answer="$(whiptail --title "$title" --inputbox "$prompt" 10 78 "$default" 3>&1 1>&2 2>&3)" || return 1
+  if has_cmd whiptail && [[ -t 0 && -e /dev/tty ]]; then
+    answer="$(whiptail --title "$title" --inputbox "$prompt" 10 78 "$default" </dev/tty 3>&1 1>/dev/tty 2>&3)" || return 1
   else
     printf '%s [%s]: ' "$prompt" "$default" >&2
     IFS= read -r answer || return 1
@@ -77,11 +77,11 @@ ui_input() {
 
 ui_yesno() {
   local title="$1" prompt="$2" default="${3:-no}" answer
-  if has_cmd whiptail && [[ -t 0 && -t 1 ]]; then
+  if has_cmd whiptail && [[ -t 0 && -e /dev/tty ]]; then
     if [[ "$default" == yes ]]; then
-      whiptail --title "$title" --yesno "$prompt" 12 78
+      whiptail --title "$title" --yesno "$prompt" 12 78 </dev/tty >/dev/tty 2>&1
     else
-      whiptail --defaultno --title "$title" --yesno "$prompt" 12 78
+      whiptail --defaultno --title "$title" --yesno "$prompt" 12 78 </dev/tty >/dev/tty 2>&1
     fi
   else
     if [[ "$default" == yes ]]; then
@@ -97,8 +97,8 @@ ui_yesno() {
 ui_menu() {
   local title="$1" prompt="$2"
   shift 2
-  if has_cmd whiptail && [[ -t 0 && -t 1 ]]; then
-    whiptail --title "$title" --menu "$prompt" 20 84 12 "$@" 3>&1 1>&2 2>&3
+  if has_cmd whiptail && [[ -t 0 && -e /dev/tty ]]; then
+    whiptail --title "$title" --menu "$prompt" 20 84 12 "$@" </dev/tty 3>&1 1>/dev/tty 2>&3
   else
     local -a opts=("$@")
     local i choice
