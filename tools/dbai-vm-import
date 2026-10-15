@@ -562,7 +562,7 @@ do_import() {
     die "Impor disk gagal. Lihat log $LOG_FILE dan kapasitas storage."
   fi
 
-  disk_ref="$(qm config "$vmid" | sed -nE 's/^unused[0-9]+: ([^,]+).*/\\1/p' | head -n 1)"
+  disk_ref="$(qm config "$vmid" | sed -nE 's/^unused[0-9]+: ([^,]+).*/\1/p' | head -n 1)"
   if [[ -z "$disk_ref" ]]; then
     warn "Proxmox tidak menampilkan disk baru sebagai unused*. Mencoba menemukan disk hasil impor."
     disk_ref="$(pvesm list "$storage" --content images 2>/dev/null | awk -v id="$vmid" '$1 ~ ("vm-" id "-disk-") || $1 ~ (":" id "/vm-" id "-disk-") {print $1}' | tail -n 1)"
@@ -574,7 +574,7 @@ do_import() {
 
   info "Memasang disk utama: $disk_ref"
   qm set "$vmid" --scsi0 "$disk_ref" --boot order=scsi0
-  unused="$(qm config "$vmid" | sed -nE 's/^(unused[0-9]+):.*/\\1/p' | head -n 1)"
+  unused="$(qm config "$vmid" | sed -nE 's/^(unused[0-9]+):.*/\1/p' | head -n 1)"
   [[ -z "$unused" ]] || qm set "$vmid" --delete "$unused"
 
   if [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]]; then
