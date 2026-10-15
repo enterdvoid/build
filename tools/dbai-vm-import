@@ -68,6 +68,9 @@ ui_input() {
   local title="$1" prompt="$2" default="${3-}" answer
   if has_cmd whiptail && [[ -t 0 && -e /dev/tty ]]; then
     answer="$(whiptail --title "$title" --inputbox "$prompt" 10 78 "$default" </dev/tty 3>&1 1>/dev/tty 2>&3)" || return 1
+    # Whiptail can return an empty value if the user clears the pre-filled field.
+    # Restore the displayed default rather than turning the VM name into "dbai-vm".
+    answer="${answer:-$default}"
   else
     printf '%s [%s]: ' "$prompt" "$default" >&2
     IFS= read -r answer || return 1
@@ -205,7 +208,19 @@ default_name_from_source() {
   base="${base%.gz}"; base="${base%.xz}"; base="${base%.zst}"; base="${base%.bz2}"
   base="${base%.*}"
   base="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
-  base="${base:0:60}"
+
+  # Keep recognisable product/version names instead of the long firmware target.
+  # Example: openwrt-25.12.5-armsr-armv8-generic-ext4-combined-efi -> openwrt-25.12.5
+  if [[ "$base" =~ ^(openwrt-[0-9]+(\.[0-9]+)*)(-|$) ]]; then
+    base="${BASH_REMATCH[1]}"
+  elif [[ "$base" =~ ^(chr-[0-9]+(\.[0-9]+)*)(-|$) ]]; then
+    base="${BASH_REMATCH[1]}"
+  else
+    base="$(printf '%s' "$base" | sed -E 's/-(arm64|aarch64|armv[0-9]+|armsr|x86_64|amd64|generic|ext4|squashfs|combined|efi|uefi|rootfs|disk|image)(-|$).*//')"
+  fi
+
+  base="${base:0:63}"
+  base="$(printf '%s' "$base" | sed -E 's/[-_.]+$//')"
   [[ "$base" =~ ^[a-z0-9] ]] || base="dbai-vm-$base"
   printf '%s' "${base:-dbai-vm}"
 }
@@ -567,6 +582,16 @@ do_import() {
   info "Membuat konfigurasi VM $vmid ($name)"
   qm create "$vmid" "${create_args[@]}"
 
+  if [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]]; then
+    # Persist UEFI variables (boot entries/settings) instead of letting QEMU
+    # create a temporary efivars file on every start.
+    info "Membuat EFI variables disk persisten pada storage '$storage'."
+    if ! qm set "$vmid" --efidisk0 "$storage:1,format=raw,efitype=4m,pre-enrolled-keys=0"; then
+      rollback_empty_vm "$vmid"
+      die "Gagal membuat EFI disk persisten pada storage '$storage'. Pastikan storage menerima content images dan mendukung format raw."
+    fi
+  fi
+
   if qm disk import --help >/dev/null 2>&1; then
     import_cmd=(qm disk import)
   else
@@ -678,7 +703,7 @@ interactive_wizard() {
   vmid="$(ui_input "$APP_NAME" "VMID yang akan digunakan:" "$(next_vmid)")" || { warn "Wizard dibatalkan pada input VMID."; return 0; }
   info "VMID yang dipilih: $vmid."
   info "Meminta nama VM."
-  name="$(ui_input "$APP_NAME" "Nama VM:" "$default_name")" || { warn "Wizard dibatalkan pada input nama VM."; return 0; }
+  name="$(ui_input "$APP_NAME" "Nama VM (1–63 karakter; awali huruf/angka; . _ - diizinkan; karakter lain diganti '-'):" "$default_name")" || { warn "Wizard dibatalkan pada input nama VM."; return 0; }
   info "Meminta ukuran RAM guest."
   memory="$(ui_input "$APP_NAME" "RAM guest (MiB):" "1024")" || { warn "Wizard dibatalkan pada input RAM."; return 0; }
   info "Meminta jumlah vCPU."
