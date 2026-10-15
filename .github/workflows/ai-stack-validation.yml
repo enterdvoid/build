@@ -185,12 +185,27 @@ jobs:
             echo "::error::GitHub Actions builds must explicitly set BSPFREEZE=yes."
             exit 1
           }
-          grep -Fq 'debian:bookworm|debian:trixie' "$motd" || {
-            echo "::error::MOTD must correctly label Debian Bookworm/Trixie when distro metadata is unknown."
+          for mapping in \
+            'debian:bullseye) DISTRO_STATUS=' \
+            'debian:bookworm) DISTRO_STATUS=' \
+            'debian:trixie) DISTRO_STATUS=' \
+            'debian:forky) DISTRO_STATUS=' \
+            'ubuntu:jammy|ubuntu:noble|ubuntu:resolute) DISTRO_STATUS='; do
+            grep -Fq "$mapping" "$motd" || {
+              echo "::error::MOTD is missing expected OS lifecycle mapping: $mapping"
+              exit 1
+            }
+          done
+          grep -Fq 'oldoldstable/LTS' "$motd" || {
+            echo "::error::Bullseye fallback must reflect oldoldstable/LTS."
             exit 1
           }
-          grep -Fq 'debian:bullseye) DISTRO_STATUS=' "$motd" && grep -Fq 'LTS' "$motd" || {
-            echo "::error::MOTD must not mislabel Debian Bullseye LTS as EOL in the unknown-metadata fallback."
+          grep -Fq 'oldstable/LTS' "$motd" || {
+            echo "::error::Bookworm fallback must reflect oldstable/LTS."
+            exit 1
+          }
+          grep -Fq 'testing' "$motd" || {
+            echo "::error::Forky fallback must reflect Debian testing status."
             exit 1
           }
           grep -Fq 'if root_passwd_output="$(printf' "$firstlogin" || {
