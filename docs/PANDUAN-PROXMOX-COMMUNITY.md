@@ -112,11 +112,15 @@ apt-cache policy
 
 Output yang kamu kirim menunjukkan suite APT yang benar: Debian `bookworm`, `bookworm-updates`, `bookworm-backports`, `bookworm-security`, ditambah repository Armbian dan PXVIRT Bookworm. Ada satu suite `stable` dari `github.armbian.com/configng`; itu repository konfigurator Armbian, bukan pengganti suite Debian utama. Dari output tersebut tidak terlihat Debian `sid` atau `unstable`.
 
-Pemetaan fallback MOTD DBAI (hanya jika metadata status Armbian kosong/tidak dikenal) diterapkan secara selektif:
-- Debian Bookworm/Trixie: `stable` agar base yang bukan rolling tidak salah diberi label rolling.
-- Ubuntu Jammy/Noble/Resolute: `stable` pada label ringkas DBAI.
-- Debian Bullseye: `LTS` pada fallback, karena dukungan LTS Debian masih berjalan pada Oktober 2026.
-- Debian Forky: tetap `rolling`, karena Debian resmi masih mengategorikannya sebagai `testing` pada saat ini.
+Pemetaan fallback MOTD DBAI (hanya jika metadata status Armbian kosong/tidak dikenal) mengikuti status release upstream:
+- Debian Bullseye: `oldoldstable/LTS`.
+- Debian Bookworm: `oldstable/LTS`.
+- Debian Trixie: `stable`.
+- Debian Forky: `testing` (bukan stable pada saat ini).
+- Ubuntu Jammy, Noble, dan Resolute: `LTS`.
+- Codename lain yang tidak dikenali tetap menggunakan label fallback `rolling`.
+
+Dengan begitu label Bookworm lebih tepat: tidak disebut rolling, tetapi juga tidak salah disebut stable paling baru.
 
 Jika metadata Armbian secara eksplisit menyatakan `supported` atau `eos`, nilai metadata itu tetap didahulukan. Rujukan: [status release Debian](https://www.debian.org/releases/index.en.html) dan [informasi Debian Forky/testing](https://www.debian.org/releases/testing/).
 
