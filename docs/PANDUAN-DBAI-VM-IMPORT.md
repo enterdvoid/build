@@ -60,7 +60,7 @@ Format akhir yang benar-benar dapat dibaca diverifikasi oleh `qemu-img info`; ek
 
 ## 5. Arsitektur guest dan batas kompatibilitas
 
-`qemu-img` mendeteksi **format disk**, bukan CPU guest, firmware boot, atau kompatibilitas kernel. Pada host ARM64, pastikan image juga ditujukan untuk ARM64/aarch64; disk x86_64 tidak otomatis dapat berjalan sebagai guest ARM64. Wizard meminta konfirmasi arsitektur pada host ARM64, menggunakan machine type `virt`, dan memberi peringatan jika `/dev/kvm` tidak tersedia.
+`qemu-img` mendeteksi **format disk**, bukan CPU guest, firmware boot, atau kompatibilitas kernel. Pada host ARM64, pastikan image juga ditujukan untuk ARM64/aarch64; disk x86_64 tidak otomatis dapat berjalan sebagai guest ARM64. Pada host ARM64, wizard meminta konfirmasi arsitektur guest, memilih machine type `virt` dan UEFI (`OVMF`), menambahkan `--arch aarch64` bila versi Proxmox menyediakan opsi itu, memakai CPU `host` saat `/dev/kvm` tersedia, dan mencoba TCG (`cortex-a53`, KVM nonaktif) bila tidak tersedia. Firmware ARM64 UEFI yang cocok tetap diperlukan untuk banyak guest; script memperingatkan jika file firmware tidak terdeteksi. Saat build dan ekstraksi, periksa juga ruang kosong di filesystem staging (`/var/tmp` atau `TMPDIR`).
 
 Keberhasilan impor bukan bukti bahwa guest bisa boot. Image tertentu membutuhkan UEFI, serial console, controller disk, NIC, atau konfigurasi machine yang spesifik. Jika VM tidak start, lihat task log Proxmox dan periksa konfigurasi VM sebelum mencoba mengubah host network.
 
