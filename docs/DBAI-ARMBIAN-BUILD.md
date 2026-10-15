@@ -252,6 +252,7 @@ Kedua varian Proxmox mengemas script bersama `tools/dbai-vm-import` ke `/usr/loc
 
 - Proxmox Official (Trixie) dan Proxmox Community/PXVIRT (Bookworm) menggunakan wizard yang sama; perbedaan paket virtualisasi tetap berada pada extension masing-masing.
 - Format input umum: RAW/IMG, QCOW2, VDI, VMDK, VHD/VHDX serta arsip terkompresi dan OVA/OVF dengan impor disk terpilih.
+- Pada host ARM64, wizard memilih machine `virt` dengan UEFI/OVMF, mencoba opsi arsitektur `aarch64` bila tersedia, dan menggunakan KVM atau fallback TCG. Firmware UEFI ARM64 yang cocok masih diperlukan; hasil impor tidak menjamin guest bisa boot.
 - Wizard tidak mengubah konfigurasi jaringan host. Jika tidak ada bridge yang tersedia, pengguna dapat membuat VM tanpa NIC dan menyelesaikan jaringan kemudian.
 - Periksa lingkungan dengan `dbai-vm-import --check`; log ada di `/var/log/dbai-vm-import.log`.
 - Pengujian CI memeriksa sintaks script, tampilan bantuan, format yang dinyatakan didukung, dan integrasi kedua extension. Tes itu bukan validasi boot guest atau build firmware penuh. Uji disk kecil pada firmware aktual sebelum mengandalkannya untuk VM penting.
