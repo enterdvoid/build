@@ -582,7 +582,7 @@ jobs:
           done
           grep -Fq 'pvesm status --content images' tools/dbai-vm-import || { echo "::error::Importer must validate image-capable storage."; exit 1; }
           grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import || { echo "::error::Importer must detect existing bridges instead of assuming vmbr0."; exit 1; }
-          grep -Fq 'does not rewrite host network config' tools/dbai-vm-import || grep -Fq 'host network will not be changed' tools/dbai-vm-import || { echo "::error::Importer safety note about host network is missing."; exit 1; }
+          grep -Fq 'the tool never rewrites host network config' tools/dbai-vm-import || { echo "::error::Importer safety note about host network is missing."; exit 1; }
 
           grep -Fq 'https://us.mirrors.lierfang.com/pxcloud/pxvirt' extensions/proxmox-community.sh || {
             echo "::error::PXVIRT US mirror fallback is missing."
