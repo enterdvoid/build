@@ -448,8 +448,17 @@ prepare_input() {
   printf '%s' "$path"
 }
 
+sanitize_vm_name() {
+  local name="$1"
+  # Replace characters that Proxmox rejects and prevent leading/trailing separators.
+  name="$(printf '%s' "$name" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^[^A-Za-z0-9]+//; s/[-_.]+$//')"
+  name="${name:0:63}"
+  name="$(printf '%s' "$name" | sed -E 's/[-_.]+$//')"
+  printf '%s' "${name:-dbai-vm}"
+}
+
 check_vm_name() {
-  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$ ]] || die "Nama VM tidak valid. Gunakan 1–63 karakter: huruf, angka, titik, garis bawah, atau tanda hubung."
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$ ]] || die "Nama VM tidak valid setelah normalisasi. Gunakan 1–63 karakter: huruf, angka, titik, garis bawah, atau tanda hubung."
 }
 
 vm_bridges_valid() {
@@ -475,6 +484,7 @@ rollback_empty_vm() {
 
 do_import() {
   local source="$1" vmid="$2" name="$3" storage="$4" memory="$5" cores="$6" bridge="$7" start="$8"
+  local requested_name="$3"
   local image_path info_json image_format virtual_size disk_ref remote_name local_download unused create_help
   local vmid_decimal
   local -a create_args=() import_cmd=()
@@ -484,6 +494,10 @@ do_import() {
   vmid_decimal=$((10#$vmid))
   ((vmid_decimal >= 100 && vmid_decimal <= 999999999)) || die "VMID harus berada pada rentang 100 sampai 999999999."
   if qm status "$vmid" >/dev/null 2>&1; then die "VMID $vmid sudah digunakan."; fi
+  name="$(sanitize_vm_name "$name")"
+  if [[ "$name" != "$requested_name" ]]; then
+    info "Nama VM disesuaikan dari '$requested_name' menjadi '$name' agar sesuai aturan Proxmox."
+  fi
   check_vm_name "$name"
   [[ "$memory" =~ ^[0-9]+$ && "$memory" -ge 128 && "$memory" -le 1048576 ]] || die "RAM tidak valid (MiB; rentang 128–1048576)."
   [[ "$cores" =~ ^[0-9]+$ && "$cores" -ge 1 && "$cores" -le 512 ]] || die "Jumlah CPU tidak valid (1–512)."
