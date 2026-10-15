@@ -507,6 +507,7 @@ jobs:
           test -x ./compile.sh || { echo "::error::compile.sh is missing or not executable."; exit 1; }
           test -f config/boards/aml-s9xx-box.tvb || { echo "::error::config/boards/aml-s9xx-box.tvb is missing."; exit 1; }
           test -f userpatches/extensions/dbai-branding.sh || { echo "::error::userpatches/extensions/dbai-branding.sh is missing."; exit 1; }
+          test -s tools/dbai-vm-import || { echo "::error::tools/dbai-vm-import is missing."; exit 1; }
           python3 - <<'PY'
           import json, os, pathlib
           matrix = json.loads(os.environ["MATRIX_JSON"])
@@ -545,6 +546,9 @@ jobs:
                   raise SystemExit(f"Required Armbian extension '{extension}' not found for variant '{variant}'.")
           print(f"Preflight passed: board exists and all {len(extension_rows)} extension-enabled matrix entries map to available extensions.")
           PY
+          bash -n tools/dbai-vm-import
+          bash tools/dbai-vm-import --help >/dev/null
+          echo "Shell syntax and help smoke test OK: tools/dbai-vm-import"
           for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh extensions/applications-casaos.sh extensions/cctv-lightnvr.sh extensions/desktop-openbox.sh extensions/ai-stack-common.sh extensions/ai-hermes.sh extensions/ai-router9.sh extensions/ai-hermes-router9.sh; do
             bash -n "$extension"
             echo "Shell syntax OK: $extension"
@@ -563,6 +567,23 @@ jobs:
             echo "::error::Proxmox enterprise source must be disabled with a valid Deb822 field."
             exit 1
           }
+          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh; do
+            grep -Fq 'chroot_sdcard_apt_get_install qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3' "$extension" || {
+              echo "::error::Proxmox extensions must install DBAI VM importer dependencies."
+              exit 1
+            }
+            grep -Fq 'install -m 0755 tools/dbai-vm-import' "$extension" || {
+              echo "::error::Both Proxmox variants must install dbai-vm-import in the image."
+              exit 1
+            }
+          done
+          for format in raw qcow2 vdi vmdk vpc vhdx; do
+            grep -Fq "$format" tools/dbai-vm-import || { echo "::error::VM importer missing format support: $format"; exit 1; }
+          done
+          grep -Fq 'pvesm status --content images' tools/dbai-vm-import || { echo "::error::Importer must validate image-capable storage."; exit 1; }
+          grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import || { echo "::error::Importer must detect existing bridges instead of assuming vmbr0."; exit 1; }
+          grep -Fq 'does not rewrite host network config' tools/dbai-vm-import || grep -Fq 'host network will not be changed' tools/dbai-vm-import || { echo "::error::Importer safety note about host network is missing."; exit 1; }
+
           grep -Fq 'https://us.mirrors.lierfang.com/pxcloud/pxvirt' extensions/proxmox-community.sh || {
             echo "::error::PXVIRT US mirror fallback is missing."
             exit 1
