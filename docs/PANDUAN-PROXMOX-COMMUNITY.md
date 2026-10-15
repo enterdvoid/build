@@ -28,6 +28,28 @@ Pada halaman login gunakan:
 - **Password:** password root yang dibuat saat first boot.
 - **Realm:** `Linux PAM standard authentication` (atau opsi `Linux PAM` bila label UI berbeda).
 
+### Jika `root@pam` menolak password
+
+Prompt first-login Armbian lama menampilkan peringatan password lemah, tetapi tidak memeriksa hasil perintah `passwd root`. Jika PAM menolak password pendek, setup masih dapat berlanjut sehingga kamu merasa password sudah disimpan meskipun sebenarnya belum berubah.
+
+Karena kamu masih memiliki shell root di console/SSH, atur ulang password sekarang:
+
+```bash
+passwd root
+passwd -S root
+```
+
+Masukkan password baru yang panjang (disarankan 12–16 karakter atau lebih), unik, dan tidak berdasarkan kata kamus. `passwd -S root` seharusnya menunjukkan status password `P` (password tersedia), bukan `L` (locked). Lalu coba login lagi ke `https://IP-STB:8006` sebagai `root@pam`, Realm `Linux PAM`, menggunakan password baru.
+
+Jika masih ditolak, jangan mengulang tebakan berkali-kali. Periksa layanan dan log autentikasi dari console:
+
+```bash
+systemctl --no-pager --full status pveproxy pvedaemon
+journalctl -u pveproxy -u pvedaemon -n 100 --no-pager
+```
+
+Perbaikan source DBAI sekarang memeriksa exit status perintah pengaturan password root dan menampilkan kesalahan jika password ditolak; first-login tidak melanjutkan dengan diam-diam seolah password sudah berhasil ditetapkan.
+
 Untuk administrasi Proxmox, akun root PAM digunakan; akun Linux biasa bukan pengganti realm tersebut. Jika halaman tidak terbuka, lanjutkan ke diagnostik pada bagian 4.
 
 ## 2. Kenapa first-login meminta akun bernama `ceph`?
@@ -88,9 +110,17 @@ grep -RhsE '^[[:space:]]*(deb[[:space:]]|URIs:|Suites:)' \
 apt-cache policy
 ```
 
-Untuk image ini, repositori Debian yang dimaksud seharusnya memakai suite `bookworm`; sumber PXVIRT juga menggunakan suite Bookworm. Jika output menunjukkan `sid`, `unstable`, suite `rolling`, atau codename lain yang tidak diharapkan, jangan melakukan upgrade besar sebelum sumber APT ditinjau.
+Output yang kamu kirim menunjukkan suite APT yang benar: Debian `bookworm`, `bookworm-updates`, `bookworm-backports`, `bookworm-security`, ditambah repository Armbian dan PXVIRT Bookworm. Ada satu suite `stable` dari `github.armbian.com/configng`; itu repository konfigurator Armbian, bukan pengganti suite Debian utama. Dari output tersebut tidak terlihat Debian `sid` atau `unstable`.
 
-Source MOTD DBAI sudah diperbaiki agar codenames Bookworm/Trixie dan Ubuntu LTS yang kita build tidak dilabeli rolling hanya karena metadata status Armbian kosong/tidak dikenal. Perubahan tampilan MOTD baru ada pada image yang dibangun ulang, bukan pada image yang sudah ter-flash.
+Pemetaan fallback MOTD DBAI (hanya jika metadata status Armbian kosong/tidak dikenal) diterapkan secara selektif:
+- Debian Bookworm/Trixie: `stable` agar base yang bukan rolling tidak salah diberi label rolling.
+- Ubuntu Jammy/Noble/Resolute: `stable` pada label ringkas DBAI.
+- Debian Bullseye: `LTS` pada fallback, karena dukungan LTS Debian masih berjalan pada Oktober 2026.
+- Debian Forky: tetap `rolling`, karena Debian resmi masih mengategorikannya sebagai `testing` pada saat ini.
+
+Jika metadata Armbian secara eksplisit menyatakan `supported` atau `eos`, nilai metadata itu tetap didahulukan. Rujukan: [status release Debian](https://www.debian.org/releases/index.en.html) dan [informasi Debian Forky/testing](https://www.debian.org/releases/testing/).
+
+Perbaikan MOTD tidak mengubah repository, versi paket, kernel, atau siklus dukungan OS—hanya teks klasifikasi yang ditampilkan. Image yang sudah di-flash perlu mengganti skrip MOTD atau dipasang ulang dengan image build baru agar tampilan ikut berubah.
 
 ## 4. Pemeriksaan layanan Proxmox
 
