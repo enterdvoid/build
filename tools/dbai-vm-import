@@ -619,7 +619,8 @@ interactive_wizard() {
   )
   local action
 
-  action="$(ui_menu "$APP_NAME" "Apa yang ingin dilakukan?" "${menu[@]}")" || exit 0
+  info "Membuka menu utama."
+  action="$(ui_menu "$APP_NAME" "Apa yang ingin dilakukan?" "${menu[@]}")" || { warn "Wizard dibatalkan pada menu utama."; return 0; }
   case "$action" in
     diagnose) check_host; return ;;
     quit) return ;;
@@ -627,21 +628,29 @@ interactive_wizard() {
     *) die "Menu tidak dikenal." ;;
   esac
 
-  source_mode="$(ui_menu "$APP_NAME" "Pilih sumber image:" "${source_menu[@]}")" || exit 0
+  info "Membuka pemilihan sumber image."
+  source_mode="$(ui_menu "$APP_NAME" "Pilih sumber image:" "${source_menu[@]}")" || { warn "Wizard dibatalkan pada pemilihan sumber image."; return 0; }
   case "$source_mode" in
     local-select)
-      source_input="$(ui_input "$APP_NAME" "Folder lokal untuk mencari image yang didukung:" "/root")" || exit 0
+      info "Meminta folder untuk pemilihan image lokal."
+      source_input="$(ui_input "$APP_NAME" "Folder lokal untuk mencari image yang didukung:" "/root")" || { warn "Wizard dibatalkan saat meminta folder lokal."; return 0; }
       source_input="${source_input:-/root}"
+      info "Menampilkan daftar image di folder lokal."
       source="$(select_local_image "$source_input")"
+      info "File lokal dipilih: $(basename -- "$source")"
       ;;
     local-path)
-      source_input="$(ui_input "$APP_NAME" "Masukkan path file image atau folder lokal:" "/root")" || exit 0
+      info "Meminta path file/folder lokal."
+      source_input="$(ui_input "$APP_NAME" "Masukkan path file image atau folder lokal:" "/root")" || { warn "Wizard dibatalkan saat meminta path lokal."; return 0; }
       [[ -n "$source_input" ]] || source_input="/root"
       source="$(resolve_local_input "$source_input")"
+      info "Sumber lokal dipilih: $(basename -- "$source")"
       ;;
     url)
-      source="$(ui_input "$APP_NAME" "Masukkan URL langsung file image HTTP(S):" "")" || exit 0
+      info "Meminta URL image HTTP(S)."
+      source="$(ui_input "$APP_NAME" "Masukkan URL langsung file image HTTP(S):" "")" || { warn "Wizard dibatalkan saat meminta URL."; return 0; }
       [[ "$source" =~ ^https?:// ]] || die "URL harus dimulai dengan http:// atau https://."
+      info "Sumber URL dipilih; URL lengkap tidak ditulis ke log."
       ;;
     *)
       die "Pilihan sumber image tidak dikenal."
@@ -649,13 +658,24 @@ interactive_wizard() {
   esac
 
   default_name="$(default_name_from_source "$source")"
-  vmid="$(ui_input "$APP_NAME" "VMID yang akan digunakan:" "$(next_vmid)")" || exit 0
-  name="$(ui_input "$APP_NAME" "Nama VM:" "$default_name")" || exit 0
-  memory="$(ui_input "$APP_NAME" "RAM guest (MiB):" "1024")" || exit 0
-  cores="$(ui_input "$APP_NAME" "Jumlah vCPU:" "1")" || exit 0
+  info "Meminta VMID."
+  vmid="$(ui_input "$APP_NAME" "VMID yang akan digunakan:" "$(next_vmid)")" || { warn "Wizard dibatalkan pada input VMID."; return 0; }
+  info "VMID yang dipilih: $vmid."
+  info "Meminta nama VM."
+  name="$(ui_input "$APP_NAME" "Nama VM:" "$default_name")" || { warn "Wizard dibatalkan pada input nama VM."; return 0; }
+  info "Meminta ukuran RAM guest."
+  memory="$(ui_input "$APP_NAME" "RAM guest (MiB):" "1024")" || { warn "Wizard dibatalkan pada input RAM."; return 0; }
+  info "Meminta jumlah vCPU."
+  cores="$(ui_input "$APP_NAME" "Jumlah vCPU:" "1")" || { warn "Wizard dibatalkan pada input vCPU."; return 0; }
+  info "Membuka pemilihan storage tujuan."
   choose_storage
+  info "Storage tujuan dipilih: $SELECTED_STORAGE."
+  info "Membuka pemilihan bridge jaringan."
   choose_bridge
+  info "Bridge dipilih: ${SELECTED_BRIDGE:-tidak menggunakan NIC}."
+  info "Meminta konfirmasi untuk langsung menjalankan VM."
   if ui_yesno "$APP_NAME" "Jalankan VM segera setelah impor? Disarankan memilih Tidak untuk memeriksa hardware/console lebih dahulu." no; then start=yes; else start=no; fi
+  info "Semua parameter wizard lengkap; memulai tahap impor."
   do_import "$source" "$vmid" "$name" "$SELECTED_STORAGE" "$memory" "$cores" "$SELECTED_BRIDGE" "$start"
 }
 
