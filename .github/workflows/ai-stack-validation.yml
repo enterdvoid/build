@@ -124,6 +124,20 @@ jobs:
             exit 1
           }
           grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import
+          grep -Fq 'select_local_image()' tools/dbai-vm-import || {
+            echo "::error::VM importer must provide a local image picker."
+            exit 1
+          }
+          grep -Fq 'local-select' tools/dbai-vm-import || {
+            echo "::error::VM importer missing local-folder source option."
+            exit 1
+          }
+          for suffix in '.img' '.raw' '.qcow2' '.vdi' '.vmdk' '.vhd' '.vhdx' '.zip' '.ova' '.ovf'; do
+            grep -Fq "$suffix" tools/dbai-vm-import || {
+              echo "::error::VM importer missing local picker suffix filter: $suffix"
+              exit 1
+            }
+          done
           grep -Fq 'the tool never rewrites host network config' tools/dbai-vm-import
           test -s docs/PANDUAN-DBAI-VM-IMPORT.md
           echo "Proxmox VM importer integration checks passed."
