@@ -53,15 +53,18 @@ getent passwd ceph
 id ceph
 ```
 
-Jika `ceph` tercantum sebagai anggota grup `sudo` setelah prompt first-login, cabut hak sudo dan kunci autentikasi password untuk akun service itu:
+Jika `ceph` tercantum sebagai anggota grup tambahan setelah prompt first-login, cabut grup yang salah ditambahkan dan kunci autentikasi password untuk akun service tersebut:
 
 ```bash
-sudo gpasswd -d ceph sudo || true
+for group in sudo netdev audio video disk tty users games dialout plugdev input bluetooth systemd-journal ssh render docker; do
+  getent group "$group" >/dev/null && sudo gpasswd -d ceph "$group" 2>/dev/null || true
+done
 sudo passwd -l ceph
 id ceph
+getent passwd ceph
 ```
 
-Perintah ini tidak menghapus akun atau data milik paket. Pastikan output `id ceph` tidak lagi mencantumkan grup `sudo`.
+Daftar tersebut adalah grup yang skrip first-login DBAI/Armbian berikan ke user harian. Menghapusnya dari `ceph` mencegah akun service menerima hak `sudo`, akses grup `disk`, atau akses grup `docker`. Perintah tidak menghapus akun atau data milik paket. Periksa `id ceph`: grup primary `ceph` boleh tetap ada, tetapi grup-grup tambahan onboarding tadi seharusnya tidak ada. Jika akun ini memang telah dikonfigurasi manual untuk peran lain, tinjau kebutuhannya sebelum mencabut grup.
 
 Buat akun administrator Linux biasa untuk SSH/shell jika diperlukan:
 
