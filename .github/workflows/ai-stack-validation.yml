@@ -11,6 +11,11 @@ on:
       - "docs/AI-STACK-FIRMWARE.md"
       - "docs/IMAGE-PARTITIONS-WINDOWS.md"
       - "docs/PANDUAN-HERMES-9ROUTER.md"
+      - "docs/PANDUAN-PROXMOX-COMMUNITY.md"
+      - "docs/DBAI-ARMBIAN-BUILD.md"
+      - "packages/bsp/common/usr/lib/armbian/armbian-firstlogin"
+      - "packages/bsp/common/etc/update-motd.d/10-armbian-header"
+      - "userpatches/config-default.conf"
       - "README.md"
   pull_request:
     paths:
@@ -22,6 +27,11 @@ on:
       - "docs/AI-STACK-FIRMWARE.md"
       - "docs/IMAGE-PARTITIONS-WINDOWS.md"
       - "docs/PANDUAN-HERMES-9ROUTER.md"
+      - "docs/PANDUAN-PROXMOX-COMMUNITY.md"
+      - "docs/DBAI-ARMBIAN-BUILD.md"
+      - "packages/bsp/common/usr/lib/armbian/armbian-firstlogin"
+      - "packages/bsp/common/etc/update-motd.d/10-armbian-header"
+      - "userpatches/config-default.conf"
       - "README.md"
   workflow_dispatch:
 
@@ -132,6 +142,55 @@ jobs:
           }
           test -s docs/IMAGE-PARTITIONS-WINDOWS.md
           echo "Partition regression checks passed: aml-s9xx-box FAT boot uses MBR type 0x0C; generic MBR/GPT behavior is preserved."
+
+      - name: Validate first-login accounts, MOTD status, and kernel freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          firstlogin="packages/bsp/common/usr/lib/armbian/armbian-firstlogin"
+          motd="packages/bsp/common/etc/update-motd.d/10-armbian-header"
+          bash -n "$firstlogin"
+          bash -n "$motd"
+
+          grep -Fq '$6 >= 1000 && $1 != "nobody" && $6 ~ /^\/home\/[^/]+$/ && $7 !~ /\/(nologin|false)$/' "$firstlogin" || {
+            echo "::error::First-login must only reuse a regular /home user with an interactive shell."
+            exit 1
+          }
+
+          python3 - <<'PY'
+          import subprocess
+
+          # The first eligible account should be a normal login user, not a
+          # package service account that happens to have UID >= 1000.
+          fixture = """root:x:0:0:root:/root:/bin/bash
+          ceph:x:1001:1001:Ceph service:/var/lib/ceph:/usr/sbin/nologin
+          redis:x:1002:1002:Redis service:/var/lib/redis:/usr/sbin/nologin
+          disabled:x:1003:1003:Disabled user:/home/disabled:/usr/sbin/nologin
+          dbaiadmin:x:1004:1004:DBAI admin:/home/dbaiadmin:/bin/bash
+          """.replace("          ", "")
+          awk_rule = r'$3 >= 1000 && $1 != "nobody" && $6 ~ /^\/home\/[^/]+$/ && $7 !~ /\/(nologin|false)$/ {print $1; exit}'
+          result = subprocess.run(["awk", "-F:", awk_rule], input=fixture, text=True,
+                                  capture_output=True, check=True)
+          selected = result.stdout.strip()
+          if selected != "dbaiadmin":
+              raise SystemExit(f"Expected dbaiadmin to be selected; got {selected!r}.")
+          print("First-login selection test passed: service accounts are ignored.")
+          PY
+
+          grep -Fq 'BSPFREEZE="yes"' userpatches/config-default.conf || {
+            echo "::error::Local build defaults must freeze Armbian BSP/kernel packages."
+            exit 1
+          }
+          grep -Fq '"BSPFREEZE=yes"' .github/workflows/armbian-build.yml || {
+            echo "::error::GitHub Actions builds must explicitly set BSPFREEZE=yes."
+            exit 1
+          }
+          grep -Fq 'debian:bookworm|debian:trixie' "$motd" || {
+            echo "::error::MOTD must correctly label Debian Bookworm/Trixie when distro metadata is unknown."
+            exit 1
+          }
+          test -s docs/PANDUAN-PROXMOX-COMMUNITY.md
+          echo "First-login safety, MOTD fallback, and kernel freeze checks passed."
 
       - name: Test workflow matrix presets
         shell: bash
