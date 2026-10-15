@@ -245,3 +245,15 @@ Temuan saat pengujian image Proxmox Community (PXVIRT 8) pada Debian Bookworm:
 - **Dokumentasi penggunaan:** [Panduan Proxmox Community](PANDUAN-PROXMOX-COMMUNITY.md) memuat command, keamanan akun `ceph`, akses Web UI, diagnosis service, kernel freeze, serta batas kompatibilitas.
 
 **Status validasi:** perubahan source/workflow sudah dimasukkan dan memiliki regression checks dalam workflow `DBAI Firmware Validation`. Image Proxmox Community baru tetap perlu dibangun ulang dan diuji di perangkat nyata untuk memastikan hasil onboarding, akses UI, dan status update sesuai harapan.
+
+## DBAI VM Image Importer
+
+Kedua varian Proxmox mengemas script bersama `tools/dbai-vm-import` ke `/usr/local/sbin/dbai-vm-import` dan memasang dependensi QEMU image tools, arsip, unduhan, serta menu terminal. Pengguna dapat memasukkan path lokal atau URL, lalu memilih VMID, nama, RAM, vCPU, storage image, dan bridge yang **sudah tersedia**.
+
+- Proxmox Official (Trixie) dan Proxmox Community/PXVIRT (Bookworm) menggunakan wizard yang sama; perbedaan paket virtualisasi tetap berada pada extension masing-masing.
+- Format input umum: RAW/IMG, QCOW2, VDI, VMDK, VHD/VHDX serta arsip terkompresi dan OVA/OVF dengan impor disk terpilih.
+- Wizard tidak mengubah konfigurasi jaringan host. Jika tidak ada bridge yang tersedia, pengguna dapat membuat VM tanpa NIC dan menyelesaikan jaringan kemudian.
+- Periksa lingkungan dengan `dbai-vm-import --check`; log ada di `/var/log/dbai-vm-import.log`.
+- Pengujian CI memeriksa sintaks script, tampilan bantuan, format yang dinyatakan didukung, dan integrasi kedua extension. Tes itu bukan validasi boot guest atau build firmware penuh. Uji disk kecil pada firmware aktual sebelum mengandalkannya untuk VM penting.
+
+Panduan penggunaan dan instalasi script langsung tersedia di [PANDUAN-DBAI-VM-IMPORT.md](PANDUAN-DBAI-VM-IMPORT.md). Script untuk dicoba pada firmware lama dapat diunduh dari [raw GitHub](https://raw.githubusercontent.com/enterdvoid/build/main/tools/dbai-vm-import).
