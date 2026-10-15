@@ -115,7 +115,12 @@ ui_menu() {
 }
 
 format_gib() {
-  # Proxmox pvesm status reports capacity values in KiB, not bytes.
+  # qemu-img info reports virtual-size in bytes.
+  awk -v n="${1:-0}" 'BEGIN { if (n ~ /^[0-9]+$/) printf "%.2f GiB", n/1073741824; else printf "unknown" }'
+}
+
+format_storage_gib() {
+  # Proxmox pvesm status reports Total/Used/Available in KiB.
   awk -v n="${1:-0}" 'BEGIN { if (n ~ /^[0-9]+$/) printf "%.2f GiB", n/1048576; else printf "unknown" }'
 }
 
@@ -136,7 +141,7 @@ list_storages() {
   fi
   printf '%-20s %-12s %s\n' "STORAGE" "TYPE" "AVAILABLE"
   while IFS='|' read -r name type available; do
-    printf '%-20s %-12s %s\n' "$name" "$type" "$(format_gib "$available")"
+    printf '%-20s %-12s %s\n' "$name" "$type" "$(format_storage_gib "$available")"
   done <<< "$rows"
 }
 
@@ -211,7 +216,7 @@ choose_storage() {
   [[ -n "$rows" ]] || die "Tidak ada storage aktif untuk disk image. Buka Datacenter > Storage dan aktifkan content 'Disk image'."
   while IFS='|' read -r name type available; do
     [[ -n "$name" ]] || continue
-    options+=("$name" "$type — tersedia $(format_gib "$available")")
+    options+=("$name" "$type — tersedia $(format_storage_gib "$available")")
   done <<< "$rows"
   SELECTED_STORAGE="$(ui_menu "DBAI VM Import" "Pilih storage tujuan disk VM:" "${options[@]}")" || die "Pemilihan storage dibatalkan."
 }
