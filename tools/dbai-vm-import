@@ -308,7 +308,7 @@ prepare_input() {
   fi
 
   lower="${basename,,}"
-  if [[ "$lower" == *.img.xz || "$lower" == *.raw.xz || "$lower" == *.qcow2.xz || "$lower" == *.vdi.xz || "$lower" == *.vmdk.xz ]]; then
+  if [[ "$lower" == *.img.xz || "$lower" == *.raw.xz || "$lower" == *.qcow2.xz || "$lower" == *.vdi.xz || "$lower" == *.vmdk.xz || "$lower" == *.vhd.xz || "$lower" == *.vhdx.xz ]]; then
     outdir="$WORKDIR/unpacked"; mkdir -p "$outdir"; path="$outdir/${basename%.*}"
     info "Mengekstrak XZ..."
     xz -dc -- "$TMP_SOURCE" > "$path"
