@@ -152,7 +152,7 @@ jobs:
           bash -n "$firstlogin"
           bash -n "$motd"
 
-          grep -Fq '$6 >= 1000 && $1 != "nobody" && $6 ~ /^\/home\/[^/]+$/ && $7 !~ /\/(nologin|false)$/' "$firstlogin" || {
+          grep -Fq '$3 >= 1000 && $1 != "nobody" && $6 ~ /^\/home\/[^/]+$/ && $7 !~ /\/(nologin|false)$/' "$firstlogin" || {
             echo "::error::First-login must only reuse a regular /home user with an interactive shell."
             exit 1
           }
