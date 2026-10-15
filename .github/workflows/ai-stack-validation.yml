@@ -129,7 +129,7 @@ jobs:
 
           text = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8")
           start = text.index("choose_bridge() {")
-          end = text.index("\\nsafe_extract_archive()", start)
+          end = text.index("\nsafe_extract_archive()", start)
           choose_bridge = text[start:end]
           if '[[ "$SELECTED_BRIDGE" == none ]] && SELECTED_BRIDGE=""' in choose_bridge:
               raise SystemExit("Bridge selection must not return failure when a real bridge such as vmbr0 is selected.")
