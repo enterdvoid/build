@@ -377,7 +377,7 @@ rollback_empty_vm() {
 
 do_import() {
   local source="$1" vmid="$2" name="$3" storage="$4" memory="$5" cores="$6" bridge="$7" start="$8"
-  local image_path info_json image_format virtual_size disk_ref import_cmd remote_name local_download unused
+  local image_path info_json image_format virtual_size disk_ref remote_name local_download unused
   local vmid_decimal
   local -a create_args=() import_cmd=()
 
@@ -401,7 +401,7 @@ do_import() {
   TMP_SOURCE="$source"
 
   if [[ "$source" =~ ^https?:// ]]; then
-    remote_name="${source%%\\?*}"
+    remote_name="${source%%\?*}"
     remote_name="${remote_name##*/}"
     [[ -n "$remote_name" ]] || remote_name="image-download"
     local_download="$WORKDIR/$remote_name"
