@@ -86,7 +86,11 @@ Jika VM lama menampilkan `WARN: no efidisk configured! Using temporary efivars d
 ```bash
 qm shutdown 100
 qm status 100
-# Lanjut hanya jika status sudah stopped:
+```
+
+Pastikan output `qm status 100` menunjukkan `status: stopped` sebelum melanjutkan. Setelah itu jalankan:
+
+```bash
 qm set 100 --efidisk0 local:1,format=raw,efitype=4m,pre-enrolled-keys=0
 qm config 100 | grep -E '^(bios|efidisk0|boot|scsi0):'
 qm start 100
