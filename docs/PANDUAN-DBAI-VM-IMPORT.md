@@ -66,6 +66,8 @@ Format akhir yang benar-benar dapat dibaca diverifikasi oleh `qemu-img info`; ek
 
 Pada versi sebelumnya, dua perintah `sed` untuk membaca `unused0` dan nama volume menggunakan capture group yang salah. Akibatnya impor dapat selesai, tetapi pemasangan ke `scsi0` gagal. Script terbaru sudah diperbaiki dan workflow validasi sekarang menguji kedua capture group. Jika VM sudah dibuat saat mencoba versi lama, periksa `qm config <VMID>` untuk melihat apakah disk masih tercantum sebagai `unused0`; jangan membuat impor duplikat sebelum mengecek storage.
 
+Jika nama VM berisi spasi atau karakter yang tidak diterima Proxmox, script terbaru menormalkannya otomatis (misalnya `OpenWrt 25.12.5` menjadi `OpenWrt-25.12.5`) dan membatasi panjangnya menjadi 63 karakter. Kesalahan nama terjadi sebelum proses mengunduh/mengekstrak dan mengimpor image, jadi pilihan untuk langsung menjalankan VM tidak menjadi penyebabnya.
+
 ## 4. Jaringan dan keamanan
 
 - Wizard hanya menawarkan storage aktif yang menerima content `images`. Output kapasitas menggunakan nilai KiB dari `pvesm status` yang dikonversi ke GiB. Jika versi script lama menampilkan `0.0 GiB`, unduh script terbaru dan ulangi `dbai-vm-import --check`; verifikasi kapasitas aktual dengan `pvesm status --content images` dan `df -hT /var/lib/vz`. Ukuran virtual disk yang ditampilkan `qemu-img info` berbeda: nilainya dalam byte dan dikonversi melalui formatter tersendiri.
