@@ -231,7 +231,9 @@ choose_bridge() {
     [[ -n "$name" ]] && options+=("$name" "Bridge yang sudah ada")
   done <<< "$bridges"
   SELECTED_BRIDGE="$(ui_menu "DBAI VM Import" "Pilih bridge yang sudah ada. Host network tidak akan diubah:" "${options[@]}")" || die "Pemilihan bridge dibatalkan."
-  [[ "$SELECTED_BRIDGE" == none ]] && SELECTED_BRIDGE=""
+  if [[ "$SELECTED_BRIDGE" == none ]]; then
+    SELECTED_BRIDGE=""
+  fi
 }
 
 safe_extract_archive() {
