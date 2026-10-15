@@ -189,6 +189,22 @@ jobs:
             echo "::error::MOTD must correctly label Debian Bookworm/Trixie when distro metadata is unknown."
             exit 1
           }
+          grep -Fq 'debian:bullseye) DISTRO_STATUS=' "$motd" && grep -Fq 'LTS' "$motd" || {
+            echo "::error::MOTD must not mislabel Debian Bullseye LTS as EOL in the unknown-metadata fallback."
+            exit 1
+          }
+          grep -Fq 'if root_passwd_output="$(printf' "$firstlogin" || {
+            echo "::error::First-login must check whether root password assignment succeeds."
+            exit 1
+          }
+          grep -Fq 'the system rejected the root password' "$firstlogin" || {
+            echo "::error::First-login must display rejected root-password errors instead of proceeding silently."
+            exit 1
+          }
+          grep -Fq 'if ! user_passwd_output="$(printf' "$firstlogin" || {
+            echo "::error::First-login must check whether the regular user's password assignment succeeds."
+            exit 1
+          }
           test -s docs/PANDUAN-PROXMOX-COMMUNITY.md
           echo "First-login safety, MOTD fallback, and kernel freeze checks passed."
 
