@@ -1117,6 +1117,7 @@ jobs:
             "BOOTSIZE=256"
             "FIXED_IMAGE_SIZE=${IMAGE_SIZE}"
             "ROOTFS_TYPE=${FS}"
+            "BSPFREEZE=yes"
             "BRANCH=current"
             "BUILD_DESKTOP=${BUILD_DESKTOP}"
             "BUILD_MINIMAL=${BUILD_MINIMAL}"
