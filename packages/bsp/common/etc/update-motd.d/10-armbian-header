@@ -129,9 +129,178 @@ fi
 
 # --- Distribution status line ---
 case "${DISTRIBUTION_STATUS:-}" in
-	supported) DISTRO_STATUS=$'\e[0;92mstable\e[0m' ;;
-	eos)       DISTRO_STATUS=$'\e[0;91mend of life\e[0m' ;;
-	*)         DISTRO_STATUS=$'\e[0;93mrolling\e[0m' ;;
+	supported) DISTRO_STATUS=
+[[ -n "${DISTRIBUTION_CODENAME}" ]] && DISTRO_STATUS+=" (${DISTRIBUTION_CODENAME})"
+
+# --- Updates status ---
+if [[ -f /var/cache/apt/archives/updates.number ]]; then
+	# shellcheck disable=SC1091
+	. /var/cache/apt/archives/updates.number
+fi
+UPDATE_STATUS=""
+if [[ "${NUM_UPDATES:-0}" -gt 0 ]]; then
+	if apt-mark showhold 2>/dev/null | grep -q '^linux-image'; then
+		UPDATE_STATUS="Kernel upgrade \e[0;91mdisabled\e[0m"
+	else
+		UPDATE_STATUS="Kernel upgrade \e[0;92menabled\e[0m"
+	fi
+	UPDATE_STATUS+=" and \e[1;92m${NUM_UPDATES}\e[0m package"
+	[[ "${NUM_UPDATES}" -gt 1 ]] && UPDATE_STATUS+="s"
+	UPDATE_STATUS+=" available for upgrade\e[0m "
+fi
+
+printf '\n'
+
+# --- Display summary ---
+if [[ -n "${DISTRO_STATUS:-}" ]]; then
+	[[ -n "${upgrade}" ]] && DISTRO_STATUS+=", possible distro upgrade (${upgrade})"
+	printf ' Packages:     %s %b\n' "${DISTRIBUTION_ID^}" "${DISTRO_STATUS}"
+fi
+
+[[ -n "${UPDATE_STATUS}" ]] && printf ' Updates:      %b\n' "${UPDATE_STATUS}"
+[[ -n "${HARDWARE_STATUS}" ]] && printf ' Support:      %b\n' "${HARDWARE_STATUS}"
+
+# ensure zero exit when executed directly
+(return 0 2>/dev/null) || exit 0\e[0;92mstable\e[0m' ;;
+	eos)       DISTRO_STATUS=
+[[ -n "${DISTRIBUTION_CODENAME}" ]] && DISTRO_STATUS+=" (${DISTRIBUTION_CODENAME})"
+
+# --- Updates status ---
+if [[ -f /var/cache/apt/archives/updates.number ]]; then
+	# shellcheck disable=SC1091
+	. /var/cache/apt/archives/updates.number
+fi
+UPDATE_STATUS=""
+if [[ "${NUM_UPDATES:-0}" -gt 0 ]]; then
+	if apt-mark showhold 2>/dev/null | grep -q '^linux-image'; then
+		UPDATE_STATUS="Kernel upgrade \e[0;91mdisabled\e[0m"
+	else
+		UPDATE_STATUS="Kernel upgrade \e[0;92menabled\e[0m"
+	fi
+	UPDATE_STATUS+=" and \e[1;92m${NUM_UPDATES}\e[0m package"
+	[[ "${NUM_UPDATES}" -gt 1 ]] && UPDATE_STATUS+="s"
+	UPDATE_STATUS+=" available for upgrade\e[0m "
+fi
+
+printf '\n'
+
+# --- Display summary ---
+if [[ -n "${DISTRO_STATUS:-}" ]]; then
+	[[ -n "${upgrade}" ]] && DISTRO_STATUS+=", possible distro upgrade (${upgrade})"
+	printf ' Packages:     %s %b\n' "${DISTRIBUTION_ID^}" "${DISTRO_STATUS}"
+fi
+
+[[ -n "${UPDATE_STATUS}" ]] && printf ' Updates:      %b\n' "${UPDATE_STATUS}"
+[[ -n "${HARDWARE_STATUS}" ]] && printf ' Support:      %b\n' "${HARDWARE_STATUS}"
+
+# ensure zero exit when executed directly
+(return 0 2>/dev/null) || exit 0\e[0;91mend of life\e[0m' ;;
+	*)
+		# Some custom/older Armbian status files do not classify the Debian/Ubuntu
+		# codename shipped in the image. Do not mislabel a stable base as rolling
+		# just because the Armbian support-status metadata is missing/unknown.
+		case "${DISTRIBUTION_ID,,}:${DISTRIBUTION_CODENAME}" in
+			debian:bullseye) DISTRO_STATUS=
+[[ -n "${DISTRIBUTION_CODENAME}" ]] && DISTRO_STATUS+=" (${DISTRIBUTION_CODENAME})"
+
+# --- Updates status ---
+if [[ -f /var/cache/apt/archives/updates.number ]]; then
+	# shellcheck disable=SC1091
+	. /var/cache/apt/archives/updates.number
+fi
+UPDATE_STATUS=""
+if [[ "${NUM_UPDATES:-0}" -gt 0 ]]; then
+	if apt-mark showhold 2>/dev/null | grep -q '^linux-image'; then
+		UPDATE_STATUS="Kernel upgrade \e[0;91mdisabled\e[0m"
+	else
+		UPDATE_STATUS="Kernel upgrade \e[0;92menabled\e[0m"
+	fi
+	UPDATE_STATUS+=" and \e[1;92m${NUM_UPDATES}\e[0m package"
+	[[ "${NUM_UPDATES}" -gt 1 ]] && UPDATE_STATUS+="s"
+	UPDATE_STATUS+=" available for upgrade\e[0m "
+fi
+
+printf '\n'
+
+# --- Display summary ---
+if [[ -n "${DISTRO_STATUS:-}" ]]; then
+	[[ -n "${upgrade}" ]] && DISTRO_STATUS+=", possible distro upgrade (${upgrade})"
+	printf ' Packages:     %s %b\n' "${DISTRIBUTION_ID^}" "${DISTRO_STATUS}"
+fi
+
+[[ -n "${UPDATE_STATUS}" ]] && printf ' Updates:      %b\n' "${UPDATE_STATUS}"
+[[ -n "${HARDWARE_STATUS}" ]] && printf ' Support:      %b\n' "${HARDWARE_STATUS}"
+
+# ensure zero exit when executed directly
+(return 0 2>/dev/null) || exit 0\e[0;91mend of life\e[0m' ;;
+			debian:bookworm|debian:trixie|ubuntu:jammy|ubuntu:noble|ubuntu:resolute) DISTRO_STATUS=
+[[ -n "${DISTRIBUTION_CODENAME}" ]] && DISTRO_STATUS+=" (${DISTRIBUTION_CODENAME})"
+
+# --- Updates status ---
+if [[ -f /var/cache/apt/archives/updates.number ]]; then
+	# shellcheck disable=SC1091
+	. /var/cache/apt/archives/updates.number
+fi
+UPDATE_STATUS=""
+if [[ "${NUM_UPDATES:-0}" -gt 0 ]]; then
+	if apt-mark showhold 2>/dev/null | grep -q '^linux-image'; then
+		UPDATE_STATUS="Kernel upgrade \e[0;91mdisabled\e[0m"
+	else
+		UPDATE_STATUS="Kernel upgrade \e[0;92menabled\e[0m"
+	fi
+	UPDATE_STATUS+=" and \e[1;92m${NUM_UPDATES}\e[0m package"
+	[[ "${NUM_UPDATES}" -gt 1 ]] && UPDATE_STATUS+="s"
+	UPDATE_STATUS+=" available for upgrade\e[0m "
+fi
+
+printf '\n'
+
+# --- Display summary ---
+if [[ -n "${DISTRO_STATUS:-}" ]]; then
+	[[ -n "${upgrade}" ]] && DISTRO_STATUS+=", possible distro upgrade (${upgrade})"
+	printf ' Packages:     %s %b\n' "${DISTRIBUTION_ID^}" "${DISTRO_STATUS}"
+fi
+
+[[ -n "${UPDATE_STATUS}" ]] && printf ' Updates:      %b\n' "${UPDATE_STATUS}"
+[[ -n "${HARDWARE_STATUS}" ]] && printf ' Support:      %b\n' "${HARDWARE_STATUS}"
+
+# ensure zero exit when executed directly
+(return 0 2>/dev/null) || exit 0\e[0;92mstable\e[0m' ;;
+			*) DISTRO_STATUS=
+[[ -n "${DISTRIBUTION_CODENAME}" ]] && DISTRO_STATUS+=" (${DISTRIBUTION_CODENAME})"
+
+# --- Updates status ---
+if [[ -f /var/cache/apt/archives/updates.number ]]; then
+	# shellcheck disable=SC1091
+	. /var/cache/apt/archives/updates.number
+fi
+UPDATE_STATUS=""
+if [[ "${NUM_UPDATES:-0}" -gt 0 ]]; then
+	if apt-mark showhold 2>/dev/null | grep -q '^linux-image'; then
+		UPDATE_STATUS="Kernel upgrade \e[0;91mdisabled\e[0m"
+	else
+		UPDATE_STATUS="Kernel upgrade \e[0;92menabled\e[0m"
+	fi
+	UPDATE_STATUS+=" and \e[1;92m${NUM_UPDATES}\e[0m package"
+	[[ "${NUM_UPDATES}" -gt 1 ]] && UPDATE_STATUS+="s"
+	UPDATE_STATUS+=" available for upgrade\e[0m "
+fi
+
+printf '\n'
+
+# --- Display summary ---
+if [[ -n "${DISTRO_STATUS:-}" ]]; then
+	[[ -n "${upgrade}" ]] && DISTRO_STATUS+=", possible distro upgrade (${upgrade})"
+	printf ' Packages:     %s %b\n' "${DISTRIBUTION_ID^}" "${DISTRO_STATUS}"
+fi
+
+[[ -n "${UPDATE_STATUS}" ]] && printf ' Updates:      %b\n' "${UPDATE_STATUS}"
+[[ -n "${HARDWARE_STATUS}" ]] && printf ' Support:      %b\n' "${HARDWARE_STATUS}"
+
+# ensure zero exit when executed directly
+(return 0 2>/dev/null) || exit 0\e[0;93mrolling\e[0m' ;;
+		esac
+		;;
 esac
 [[ -n "${DISTRIBUTION_CODENAME}" ]] && DISTRO_STATUS+=" (${DISTRIBUTION_CODENAME})"
 
