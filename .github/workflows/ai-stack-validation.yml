@@ -124,6 +124,31 @@ jobs:
             exit 1
           }
           grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          source = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8").splitlines()
+          disk_ref_line = next((line for line in source if 'disk_ref="$(qm config' in line), "")
+          unused_line = next((line for line in source if 'unused="$(qm config' in line), "")
+          one = chr(92)
+          if not disk_ref_line or (one + "1") not in disk_ref_line or (one + one + "1") in disk_ref_line:
+              raise SystemExit("Disk volume capture must use exactly one sed backslash: \\1.")
+          if not unused_line or (one + "1") not in unused_line or (one + one + "1") in unused_line:
+              raise SystemExit("Unused-device capture must use exactly one sed backslash: \\1.")
+
+          config = "unused0: local:100/vm-100-disk-0.raw,size=64M\\n"
+          for line, prefix, expected in [
+              (disk_ref_line, "disk volume", "local:100/vm-100-disk-0.raw"),
+              (unused_line, "unused slot", "unused0"),
+          ]:
+              pattern = line.split("sed -nE '", 1)[1].split("'", 1)[0]
+              result = subprocess.run(["sed", "-nE", pattern], input=config, text=True, capture_output=True, check=True)
+              if result.stdout.strip() != expected:
+                  raise SystemExit(f"{prefix} capture test failed: expected {expected!r}, got {result.stdout.strip()!r}")
+          print("Imported disk volume and unused-slot extraction tests passed.")
+          PY
+
           grep -Fq 'select_local_image()' tools/dbai-vm-import || {
             echo "::error::VM importer must provide a local image picker."
             exit 1
