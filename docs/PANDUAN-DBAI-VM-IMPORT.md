@@ -66,17 +66,33 @@ Format akhir yang benar-benar dapat dibaca diverifikasi oleh `qemu-img info`; ek
 
 Pada versi sebelumnya, dua perintah `sed` untuk membaca `unused0` dan nama volume menggunakan capture group yang salah. Akibatnya impor dapat selesai, tetapi pemasangan ke `scsi0` gagal. Script terbaru sudah diperbaiki dan workflow validasi sekarang menguji kedua capture group. Jika VM sudah dibuat saat mencoba versi lama, periksa `qm config <VMID>` untuk melihat apakah disk masih tercantum sebagai `unused0`; jangan membuat impor duplikat sebelum mengecek storage.
 
-Jika nama VM berisi spasi atau karakter yang tidak diterima Proxmox, script terbaru menormalkannya otomatis (misalnya `OpenWrt 25.12.5` menjadi `OpenWrt-25.12.5`) dan membatasi panjangnya menjadi 63 karakter. Kesalahan nama terjadi sebelum proses mengunduh/mengekstrak dan mengimpor image, jadi pilihan untuk langsung menjalankan VM tidak menjadi penyebabnya.
+Nama default VM dipersingkat agar tetap mudah dikenali: `openwrt-25.12.5-armsr-armv8-generic-ext4-combined-efi.img.gz` menjadi `openwrt-25.12.5`. Kolom nama di Whiptail menjelaskan aturan penamaan; bila pengguna mengosongkan kolom, nilai default yang tampil akan dipakai. Jika nama yang diketik berisi karakter terlarang, karakter tersebut diganti dengan tanda hubung dan nama dibatasi menjadi maksimal 63 karakter (misalnya `OpenWrt 25.12.5` menjadi `OpenWrt-25.12.5`).
 
 ## 4. Jaringan dan keamanan
 
 - Wizard hanya menawarkan storage aktif yang menerima content `images`. Output kapasitas menggunakan nilai KiB dari `pvesm status` yang dikonversi ke GiB. Jika versi script lama menampilkan `0.0 GiB`, unduh script terbaru dan ulangi `dbai-vm-import --check`; verifikasi kapasitas aktual dengan `pvesm status --content images` dan `df -hT /var/lib/vz`. Ukuran virtual disk yang ditampilkan `qemu-img info` berbeda: nilainya dalam byte dan dikonversi melalui formatter tersendiri.
 - Wizard mendeteksi bridge Linux yang sudah ada, misalnya `vmbr0`. Ia tidak berasumsi bahwa nama itu pasti tersedia.
 - Wizard **tidak membuat atau mengganti konfigurasi jaringan host**. Jika tidak ada bridge, pengguna dapat membuat VM tanpa NIC dan mengatur jaringan kemudian melalui Web UI.
+- Pada host ARM64 yang menggunakan UEFI/OVMF, importer membuat `efidisk0` persisten di storage yang dipilih dengan `efitype=4m` tanpa Secure Boot keys. Disk kecil ini menyimpan variabel UEFI seperti boot entries/settings supaya tidak memakai efivars sementara setiap kali start.
 - Start VM tidak otomatis dilakukan secara default. Tinjau ringkasan konfigurasi lebih dahulu.
 - VMID diperiksa agar tidak menimpa VM yang sudah ada. Jika impor gagal setelah VM kosong dibuat, tool mencoba membersihkan VM sementara tersebut.
 - Log ditulis ke `/var/log/dbai-vm-import.log`.
 - File yang diunduh atau diekstrak memakai direktori sementara. Pastikan filesystem sementara memiliki ruang yang cukup untuk image terkompresi dan hasil ekstraksinya.
+
+### Menambahkan EFI disk pada VM ARM64 yang sudah dibuat
+
+Jika VM lama menampilkan `WARN: no efidisk configured! Using temporary efivars disk.`, Proxmox masih dapat menjalankannya, tetapi variabel UEFI tidak disimpan secara persisten. Untuk menghilangkan warning dan menyimpan variabel UEFI, matikan guest secara normal terlebih dahulu dan pastikan statusnya `stopped`. Contoh untuk VMID 100 dengan storage `local`:
+
+```bash
+qm shutdown 100
+qm status 100
+# Lanjut hanya jika status sudah stopped:
+qm set 100 --efidisk0 local:1,format=raw,efitype=4m,pre-enrolled-keys=0
+qm config 100 | grep -E '^(bios|efidisk0|boot|scsi0):'
+qm start 100
+```
+
+Perintah `qm set` menambahkan disk variabel EFI yang terpisah dari disk sistem OpenWrt. Ganti VMID/storage sesuai kebutuhan. Menambahkan EFI disk bukan jaminan bahwa guest dapat boot; image tetap harus kompatibel dengan ARM64 dan firmware UEFI yang tersedia. Lihat [manual Proxmox `qm`](https://github.com/proxmox/pve-docs/blob/master/generated/qm.1-synopsis.adoc) untuk opsi `efidisk0`.
 
 ## 5. Arsitektur guest dan batas kompatibilitas
 
