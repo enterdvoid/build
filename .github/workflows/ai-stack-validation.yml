@@ -137,7 +137,7 @@ jobs:
           if not unused_line or (one + "1") not in unused_line or (one + one + "1") in unused_line:
               raise SystemExit("Unused-device capture must use exactly one sed backslash: \\1.")
 
-          config = "unused0: local:100/vm-100-disk-0.raw,size=64M\\n"
+          config = "unused0: local:100/vm-100-disk-0.raw,size=64M\n"
           for line, prefix, expected in [
               (disk_ref_line, "disk volume", "local:100/vm-100-disk-0.raw"),
               (unused_line, "unused slot", "unused0"),
