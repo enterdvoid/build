@@ -66,6 +66,9 @@ path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PVE_DISABLE_ENTERPRISE
 	fi
 
+	# Shared image-import wizard for local files, URLs, common virtual disk formats and archives.
+	chroot_sdcard_apt_get_install qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3
+	run_host_command_logged install -m 0755 tools/dbai-vm-import "${SDCARD}/usr/local/sbin/dbai-vm-import"
 	dbai_proxmox_add_firstboot_hostname_service
 }
 
