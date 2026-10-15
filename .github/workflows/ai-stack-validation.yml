@@ -126,6 +126,19 @@ jobs:
           grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import
           python3 - <<'PY'
           import pathlib
+
+          text = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8")
+          start = text.index("choose_bridge() {")
+          end = text.index("\\nsafe_extract_archive()", start)
+          choose_bridge = text[start:end]
+          if '[[ "$SELECTED_BRIDGE" == none ]] && SELECTED_BRIDGE=""' in choose_bridge:
+              raise SystemExit("Bridge selection must not return failure when a real bridge such as vmbr0 is selected.")
+          if 'if [[ "$SELECTED_BRIDGE" == none ]]; then' not in choose_bridge:
+              raise SystemExit("Bridge selection must handle the none option with an explicit if block.")
+          print("Bridge selection regression guard passed.")
+          PY
+          python3 - <<'PY'
+          import pathlib
           import subprocess
 
           source = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8").splitlines()
