@@ -79,7 +79,7 @@ PXVIRT_PIN
 	rm -f "${SDCARD}/tmp/dbai-pxvirt-postfix.preseed"
 
 	# Keep the same VM image-import workflow on the community Proxmox variant.
-	chroot_sdcard_apt_get_install qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3
+	chroot_sdcard_apt_get_install curl wget whiptail unzip xz-utils zstd gzip bzip2 python3
 	run_host_command_logged install -m 0755 tools/dbai-vm-import "${SDCARD}/usr/local/sbin/dbai-vm-import"
 	dbai_proxmox_add_firstboot_hostname_service
 }
