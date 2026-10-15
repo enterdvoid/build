@@ -24,9 +24,11 @@ dbai-vm-import
 
 Pada firmware yang dibangun sebelum integrasi ini, dependensi mungkin belum tersedia. Pasang paket yang diperlukan terlebih dahulu:
 
+> **Penting untuk Proxmox/PXVIRT:** jangan memasang paket Debian `qemu-utils` di host Proxmox. Paket tersebut berbenturan dengan `pve-qemu-kvm` yang menyediakan utilitas QEMU versi Proxmox, dan APT dapat menghapus komponen Proxmox. Gunakan `qemu-img` yang berasal dari `pve-qemu-kvm`. Jika `apt install qemu-utils` sudah sempat dijalankan dan menghapus `pve-manager`, ikuti langkah pemulihan di bagian 6.
+
 ```bash
 apt update
-apt install -y qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3
+apt install -y curl wget whiptail unzip xz-utils zstd gzip bzip2 python3
 ```
 
 **Catatan:** bila wizard harus dijalankan dari SSH, jalankan pada terminal interaktif biasa. Jika koneksi SSH tidak stabil, gunakan console lokal agar proses impor tidak terputus.
