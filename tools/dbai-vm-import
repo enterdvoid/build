@@ -115,7 +115,8 @@ ui_menu() {
 }
 
 format_gib() {
-  awk -v n="${1:-0}" 'BEGIN { if (n ~ /^[0-9]+$/) printf "%.1f GiB", n/1073741824; else printf "unknown" }'
+  # Proxmox pvesm status reports capacity values in KiB, not bytes.
+  awk -v n="${1:-0}" 'BEGIN { if (n ~ /^[0-9]+$/) printf "%.2f GiB", n/1048576; else printf "unknown" }'
 }
 
 get_storage_rows() {
