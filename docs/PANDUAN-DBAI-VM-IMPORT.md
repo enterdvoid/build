@@ -9,6 +9,18 @@
 
 Tool yang sama dipasang di kedua extension Proxmox, sehingga perilakunya tidak berbeda hanya karena varian Official atau Community. Paket Hypervisor tetap dikelola extension masing-masing.
 
+## Pemilihan file lokal otomatis
+
+Ketika membuka wizard, pilih **Pilih dari daftar file lokal** lalu masukkan folder (default `/root`). Script akan menampilkan hanya file dengan ekstensi yang dikenal, beserta nama, suffix, dan ukuran. Contohnya:
+
+- `chr-7.24.5-arm64.img`
+- `openwrt-25.12.5-...img.gz`
+- `disk.img.xz`, `disk.vdi.xz`, `disk.qcow2.zst`
+- `disk.vdi`, `disk.qcow2`, `disk.vmdk`, `disk.vhdx`
+- `.zip`, `.ova`, dan `.ovf`
+
+Pemindaian hanya memeriksa file langsung di folder yang dipilih, tidak masuk ke subfolder. Pengguna masih bisa memilih **Masukkan path file tertentu atau folder** atau **Unduh image dari URL HTTP(S)**. Jika path folder dimasukkan pada mode path, script juga menampilkan daftar image yang cocok. File yang tidak dikenal seperti `fstab.template` tidak akan muncul di daftar.
+
 ## 2. Coba langsung pada firmware Proxmox yang sudah terpasang
 
 Sambungkan melalui SSH atau console sebagai root. Pastikan host memiliki koneksi internet, lalu jalankan:
