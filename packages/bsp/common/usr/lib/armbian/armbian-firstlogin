@@ -720,12 +720,18 @@ add_user() {
 			fi
 
 			if [[ -n "$first_input" ]]; then
-				(
-					echo "$first_input"
-					echo "$second_input"
-				) | passwd "$RealUserName" > /dev/null 2>&1
+				if ! user_passwd_output="$(printf '%s\n' "$first_input" "$second_input" | passwd "$RealUserName" 2>&1)"; then
+					echo -e "\n\e[0;31mError:\x1B[0m could not set a password for user $RealUserName." >&2
+					[[ -n "$user_passwd_output" ]] && printf '%s\n' "$user_passwd_output" >&2
+					echo "Choose a longer password and repeat first-login." >&2
+					return 1
+				fi
 			else
-				passwd -d "$RealUserName" > /dev/null 2>&1
+				if ! passwd_output="$(passwd -d "$RealUserName" 2>&1)"; then
+					echo -e "\n\e[0;31mError:\x1B[0m could not configure passwordless login for $RealUserName." >&2
+					[[ -n "$passwd_output" ]] && printf '%s\n' "$passwd_output" >&2
+					return 1
+				fi
 			fi
 
 			# Pre-create docker group to ensure user membership is set up before Docker installation.
@@ -999,11 +1005,15 @@ if [[ -f /root/.not_logged_in_yet ]] && tty -s; then
 					echo -e "\n\e[0;31mWarning:\x1B[0m Weak password, $okay \b!"
 				fi
 			fi
-			(
-				echo "$first_input"
-				echo "$second_input"
-			) | passwd root > /dev/null 2>&1
-			break
+			if root_passwd_output="$(printf '%s\n' "$first_input" "$second_input" | passwd root 2>&1)"; then
+				echo "Root password was set successfully."
+				break
+			else
+				echo -e "\n\e[0;31mError:\x1B[0m the system rejected the root password; first-login will not continue with an unverified password." >&2
+				[[ -n "$root_passwd_output" ]] && printf '%s\n' "$root_passwd_output" >&2
+				echo "Please choose a longer password and try again."
+				REPEATS=$((REPEATS - 1))
+			fi
 		elif [[ -n $password ]]; then
 			echo -e "Rejected - \e[0;31mpasswords do not match.\x1B[0m Try again [${REPEATS}]."
 			REPEATS=$((REPEATS - 1))
