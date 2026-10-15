@@ -379,36 +379,9 @@ do_import() {
   local source="$1" vmid="$2" name="$3" storage="$4" memory="$5" cores="$6" bridge="$7" start="$8"
   local image_path info_json image_format virtual_size disk_ref import_cmd
   local -a create_args=()
+  local vmid_decimal
 
-  WORKDIR="$(mktemp -d "${TMPDIR:-/var/tmp}/dbai-vm-import.XXXXXX")"
-  chmod 0700 "$WORKDIR"
-  trap '[[ -n "$WORKDIR" && -d "$WORKDIR" ]] && rm -rf -- "$WORKDIR"' EXIT
-
-  TMP_SOURCE="$source"
-  if [[ "$source" =~ ^https?:// ]]; then
-    # Download to WORKDIR, avoiding a second copy when the server returns a regular disk.
-    local remote_name="${source%%\?*}"; remote_name="${remote_name##*/}"
-    [[ -n "$remote_name" ]] || remote_name="image-download"
-    local local_download="$WORKDIR/$remote_name"
-    info "Mengunduh image ke staging sementara: $local_download"
-    curl --fail --location --show-error --retry 2 --connect-timeout 15 "$source" -o "$local_download"
-    TMP_SOURCE="$local_download"
-    source="$local_download"
-  fi
-
-  info "Memvalidasi image dan menyiapkan disk"
-  image_path="$(prepare_input "$source")"
-  info_json="$(qemu-img info --output=json "$image_path")" || die "qemu-img tidak dapat membaca image ini."
-  image_format="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("format","unknown"))' <<< "$info_json")"
-  virtual_size="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("virtual-size",0))' <<< "$info_json")"
-  case "$image_format" in
-    raw|qcow2|vdi|vmdk|vpc|vhdx) ;;
-    *) die "Format qemu-img '$image_format' tidak didukung untuk impor otomatis." ;;
-  esac
-  echo "Format terdeteksi : $image_format"
-  echo "Ukuran virtual disk: $(format_gib "$virtual_size")"
-  echo "Host architecture : $(uname -m)"
-  warn "qemu-img hanya mengidentifikasi format disk, bukan arsitektur CPU, firmware boot, atau kompatibilitas guest."
+  # Reject invalid input before downloading or extracting a potentially large image.
   if [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]]; then
     warn "Host ini ARM64. Pastikan image guest juga ARM64/aarch64. Image x86_64 tidak dapat berjalan sebagai guest ARM64 biasa."
     ui_yesno "$APP_NAME" "Saya sudah memastikan arsitektur dan kebutuhan boot image ini kompatibel dengan host ARM64." no || die "Impor dibatalkan sebelum perubahan VM."
