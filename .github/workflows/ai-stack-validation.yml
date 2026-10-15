@@ -6,6 +6,9 @@ on:
       - ".github/workflows/armbian-build.yml"
       - ".github/workflows/ai-stack-validation.yml"
       - "extensions/ai-*.sh"
+      - "extensions/proxmox-*.sh"
+      - "tools/dbai-vm-import"
+      - "docs/PANDUAN-DBAI-VM-IMPORT.md"
       - "lib/functions/image/partitioning.sh"
       - "config/boards/aml-s9xx-box.tvb"
       - "docs/AI-STACK-FIRMWARE.md"
@@ -83,6 +86,32 @@ jobs:
                       raise SystemExit(f"Syntax check failed for generated {tag}:\n{result.stderr}")
                   print(f"Embedded script syntax OK: {tag}")
           PY
+
+      - name: Validate Proxmox VM image importer
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/dbai-vm-import
+          bash tools/dbai-vm-import --help >/dev/null
+          echo "VM importer syntax and --help smoke test passed."
+
+          for extension in extensions/proxmox-official.sh extensions/proxmox-community.sh; do
+            bash -n "$extension"
+            grep -Fq 'chroot_sdcard_apt_get_install qemu-utils curl wget whiptail unzip xz-utils zstd gzip bzip2 python3' "$extension"
+            grep -Fq 'install -m 0755 tools/dbai-vm-import' "$extension"
+          done
+
+          for format in raw qcow2 vdi vmdk vpc vhdx; do
+            grep -Fq "$format" tools/dbai-vm-import || {
+              echo "::error::Missing image format support: $format"
+              exit 1
+            }
+          done
+          grep -Fq 'pvesm status --content images' tools/dbai-vm-import
+          grep -Fq 'ip -d -o link show type bridge' tools/dbai-vm-import
+          grep -Fq 'the tool never rewrites host network config' tools/dbai-vm-import
+          test -s docs/PANDUAN-DBAI-VM-IMPORT.md
+          echo "Proxmox VM importer integration checks passed."
 
       - name: Validate Windows-visible FAT boot partition
         shell: bash
