@@ -768,6 +768,7 @@ jobs:
             echo "- **Image/package version:** ${image_version}"
             echo '- **Board:** `aml-s9xx-box`'
             echo '- **Kernel branch:** `current`'
+            echo '- **Kernel/DTB/U-Boot upgrade policy:** frozen by default (`BSPFREEZE=yes`); use `sudo armbian-config --cmd UPD001` to re-enable on an installed image.'
             echo '- **Boot partition request:** 256 MiB'
             echo '- **Requested raw image size:** Server/Minimal 4096 MiB; Applications/Desktop/Openbox/CasaOS/Proxmox/LightNVR + go2rtc 8192 MiB'
             echo '- **Image output:** compressed XZ when produced by Armbian Builder, with SHA-256 checksum'
