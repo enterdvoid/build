@@ -232,3 +232,16 @@ Yang belum dikonfirmasi oleh build baru:
 - Apakah seluruh variasi filesystem/profil selesai tanpa regresi.
 
 Pemeriksaan statis terhadap sumber dapat memastikan konfigurasi telah ditanam, tetapi tidak dapat menggantikan pengujian build aktual. Setelah run berikutnya, cek file `/etc/armbian-image-release`, `/etc/armbian-release`, dan `/etc/os-release` dari hasil image untuk memverifikasi nilai akhirnya.
+
+
+## 8. Proxmox Community, status MOTD, dan kernel freeze
+
+Temuan saat pengujian image Proxmox Community (PXVIRT 8) pada Debian Bookworm:
+
+- **Label `Debian rolling (bookworm)`:** skrip `10-armbian-header` membaca status codename dari `/etc/armbian-distribution-status` dan memakai label `rolling` sebagai fallback ketika status tidak dikenali. Label MOTD itu sendiri bukan bukti bahwa APT benar-benar memakai suite `sid`/unstable. Periksa `/etc/os-release`, file source APT, dan `apt-cache policy`. Source DBAI kini mempunyai fallback untuk menampilkan Bookworm/Trixie dan Ubuntu LTS yang dipilih sebagai stable ketika metadata status tidak dikenali.
+- **Kernel upgrade:** image lama bisa menunjukkan `Kernel upgrade enabled` karena paket kernel Armbian belum di-hold. Build lokal dan GitHub Actions kini memakai `BSPFREEZE=yes` untuk menahan upgrade paket kernel/DTB/U-Boot/board-support Armbian secara default; paket OS biasa tetap dapat diperbarui. Pada image yang sudah berjalan gunakan `sudo armbian-config --cmd UPD002`; untuk mengaktifkan kembali gunakan `sudo armbian-config --cmd UPD001`. Periksa `apt-mark showhold`.
+- **First-login memilih akun `ceph`:** skrip Armbian sebelumnya memilih akun pertama ber-UID >=1000, meskipun akun tersebut adalah akun service paket. Di lingkungan PXVIRT hal ini dapat membuat akun service salah dipakai sebagai user harian dan diberi grup sudo. Sumber `armbian-firstlogin` sekarang membatasi reuse hanya untuk akun dengan home `/home/<user>` dan shell interaktif. Jangan menghapus user service `ceph`; pada image yang sudah terdampak, cabut grup sudo dan kunci password akun itu, lalu buat pengguna administrator tersendiri jika diperlukan.
+- **Akses UI Proxmox Community:** gunakan `https://IP-STB:8006`, login dengan `root@pam` dan password root first-boot. Port 8006 harus listen dan `pveproxy`, `pvedaemon`, `pve-cluster`, serta `pvestatd` perlu diperiksa ketika UI tidak dapat dibuka. Guest network bridge dan akselerasi `/dev/kvm` perlu diuji terpisah pada STB Amlogic; paket userspace yang terpasang tidak menjamin semua fitur hardware.
+- **Dokumentasi penggunaan:** [Panduan Proxmox Community](PANDUAN-PROXMOX-COMMUNITY.md) memuat command, keamanan akun `ceph`, akses Web UI, diagnosis service, kernel freeze, serta batas kompatibilitas.
+
+**Status validasi:** perubahan source/workflow sudah dimasukkan dan memiliki regression checks dalam workflow `DBAI Firmware Validation`. Image Proxmox Community baru tetap perlu dibangun ulang dan diuji di perangkat nyata untuk memastikan hasil onboarding, akses UI, dan status update sesuai harapan.
