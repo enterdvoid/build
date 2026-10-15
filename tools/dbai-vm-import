@@ -426,7 +426,20 @@ do_import() {
   fi
 
   if [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]]; then
-    create_args+=(--machine virt)
+    create_args+=(--machine virt --bios ovmf)
+    # Newer Proxmox qemu-server exposes an explicit guest architecture option.
+    # Older PXVIRT builds may infer it from their host architecture instead.
+    if qm create --help 2>&1 | grep -qE -- '(^|[[:space:]])--arch([[:space:]]|$)'; then
+      create_args+=(--arch aarch64)
+    fi
+    if [[ -e /dev/kvm ]]; then
+      create_args+=(--cpu host)
+    else
+      # TCG fallback for low-cost SBCs without a usable KVM device.
+      create_args+=(--cpu cortex-a53 --kvm 0)
+    fi
+  elif [[ ! -e /dev/kvm ]]; then
+    create_args+=(--kvm 0)
   fi
   create_args+=(--name "$name" --memory "$memory" --cores "$cores" --ostype l26 --scsihw virtio-scsi-single)
   if [[ -n "$bridge" ]]; then create_args+=(--net0 "virtio,bridge=$bridge"); fi
@@ -462,7 +475,10 @@ do_import() {
   [[ -z "$unused" ]] || qm set "$vmid" --delete "$unused"
 
   if [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]]; then
-    warn "VM memakai machine type 'virt'. Beberapa image ARM memerlukan UEFI/firmware atau pengaturan console khusus."
+    warn "VM memakai architecture aarch64, machine type 'virt', dan UEFI (OVMF). Sebagian image ARM memerlukan console serial atau pengaturan boot khusus."
+    if ! find /usr/share -maxdepth 4 -type f \( -iname 'AAVMF_CODE.fd' -o -iname 'QEMU_EFI.fd' -o -iname '*aarch64*code*.fd' \) -print -quit 2>/dev/null | grep -q .; then
+      warn "Firmware ARM64 UEFI tidak terdeteksi di /usr/share. Instal firmware AAVMF/OVMF ARM64 yang cocok sebelum mencoba boot VM."
+    fi
   fi
   if [[ ! -e /dev/kvm ]]; then
     warn "/dev/kvm tidak ditemukan. Start mungkin gagal atau performa guest sangat lambat."
