@@ -377,7 +377,7 @@ rollback_empty_vm() {
 
 do_import() {
   local source="$1" vmid="$2" name="$3" storage="$4" memory="$5" cores="$6" bridge="$7" start="$8"
-  local image_path info_json image_format virtual_size disk_ref remote_name local_download unused
+  local image_path info_json image_format virtual_size disk_ref remote_name local_download unused create_help
   local vmid_decimal
   local -a create_args=() import_cmd=()
 
@@ -399,6 +399,9 @@ do_import() {
   chmod 0700 "$WORKDIR"
   trap '[[ -n "$WORKDIR" && -d "$WORKDIR" ]] && rm -rf -- "$WORKDIR"' EXIT
   TMP_SOURCE="$source"
+  echo "Kapasitas filesystem untuk file sementara:" >&2
+  df -h "$WORKDIR" >&2 2>/dev/null || true
+  warn "Image terkompresi perlu ruang tambahan saat diekstrak. Pastikan storage sementara cukup sebelum melanjutkan."
 
   if [[ "$source" =~ ^https?:// ]]; then
     remote_name="${source%%\?*}"
@@ -433,7 +436,8 @@ do_import() {
     create_args+=(--machine virt --bios ovmf)
     # Newer Proxmox qemu-server exposes an explicit guest architecture option.
     # Older PXVIRT builds may infer it from their host architecture instead.
-    if qm create --help 2>&1 | grep -qE -- '(^|[[:space:]])--arch([[:space:]]|$)'; then
+    create_help="$(qm create --help 2>&1 || true)"
+    if grep -qE -- '(^|[[:space:]])--arch([[:space:]]|$)' <<< "$create_help"; then
       create_args+=(--arch aarch64)
     fi
     if [[ -e /dev/kvm ]]; then
