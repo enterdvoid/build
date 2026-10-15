@@ -24,7 +24,7 @@ The wizard accepts a local file path or an HTTP(S) URL. It validates the
 image with qemu-img, asks for VM settings, imports the disk, and checks the
 chosen network bridge before offering to start the VM.
 
-Recognized disk formats: RAW/IMG, QCOW2, VDI, VMDK, VHD, VHDX.
+Recognized disk formats: RAW/IMG, QCOW2, VDI, VMDK, VHD, VHDX, with .gz/.xz/.zst/.bz2 compression.
 Recognized containers: .img.gz, .img.xz, .img.zst, .img.bz2, .zip, .ova, .ovf.
 ISO installers are not disk images and are not imported by this tool.
 
@@ -60,7 +60,7 @@ require_core_commands() {
   for cmd in qm pvesm qemu-img ip awk sed grep; do
     has_cmd "$cmd" || missing+=("$cmd")
   done
-  (("${#missing[@]}" == 0)) || die "Perintah penting tidak tersedia: ${missing[*]}. Pastikan ini host Proxmox dan paket qemu-utils terpasang."
+  (("${#missing[@]}" == 0)) || die "Perintah penting tidak tersedia: ${missing[*]}. Pastikan ini host Proxmox dan paket pve-qemu-kvm menyediakan qemu-img."
 }
 
 ui_input() {
