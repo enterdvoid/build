@@ -169,6 +169,29 @@ jobs:
           import pathlib
           import subprocess
 
+          text = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8")
+          start = text.index("default_name_from_source() {")
+          end = text.index("\n}\n\nchoose_storage()", start) + 2
+          default_namer = text[start:end]
+          result = subprocess.run(
+              ["bash", "-c", default_namer + '\nprintf "%s" "$(default_name_from_source "$1")"\n', "_",
+               "/root/openwrt-25.12.5-armsr-armv8-generic-ext4-combined-efi.img.gz"],
+              text=True, capture_output=True, check=True
+          )
+          if result.stdout != "openwrt-25.12.5":
+              raise SystemExit(f"OpenWrt default name was not shortened meaningfully: {result.stdout!r}")
+          if 'answer="${answer:-$default}"' not in text:
+              raise SystemExit("Whiptail empty-input fallback to the displayed default is missing.")
+          if "Nama VM (1–63 karakter; awali huruf/angka;" not in text:
+              raise SystemExit("The VM name format hint is missing from the Whiptail prompt.")
+          if '--efidisk0 "$storage:1,format=raw,efitype=4m,pre-enrolled-keys=0"' not in text:
+              raise SystemExit("ARM64 UEFI VM must create a persistent EFI vars disk.")
+          print("VM default naming, Whiptail hint, and persistent EFI disk tests passed.")
+          PY
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
           source = pathlib.Path("tools/dbai-vm-import").read_text(encoding="utf-8").splitlines()
           disk_ref_line = next((line for line in source if 'disk_ref="$(qm config' in line), "")
           unused_line = next((line for line in source if 'unused="$(qm config' in line), "")
