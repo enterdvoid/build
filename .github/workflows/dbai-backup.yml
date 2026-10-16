@@ -1,0 +1,155 @@
+name: DBAI Repository Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_release_metadata:
+        description: "Include metadata for existing GitHub releases (does not download firmware assets)"
+        required: true
+        type: boolean
+        default: true
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/dbai-backup.yml"
+      - "docs/DBAI-BACKUP-RESTORE.md"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dbai-repository-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Create, verify, and publish backup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      INCLUDE_RELEASE_METADATA: ${{ inputs.include_release_metadata || 'true' }}
+    steps:
+      - name: Checkout complete repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install backup tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq zstd
+          git --version
+          gh --version
+          tar --version | head -n 1
+
+      - name: Create source snapshot, Git bundle, and metadata
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p backup-out
+          COMMIT="$(git rev-parse HEAD)"
+          SHORT_COMMIT="$(git rev-parse --short=12 HEAD)"
+          UTC_STAMP="$(date -u +'%Y-%m-%d_%H-%M-%S')"
+          TAG="dbai-backup-${UTC_STAMP}-${GITHUB_RUN_ID}"
+          TITLE="DBAI Repository Backup ${UTC_STAMP}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
+          git status --short
+          git ls-files -z | sort -z | xargs -0 -r -n1 printf '%s\n' > backup-out/tracked-files.txt
+          git archive --format=tar HEAD | gzip -1 > backup-out/dbai-source-snapshot.tar.gz
+          git bundle create backup-out/dbai-git-mirror.bundle --all
+          git bundle verify backup-out/dbai-git-mirror.bundle
+
+          if [[ "$INCLUDE_RELEASE_METADATA" == "true" ]]; then
+            gh api --paginate "repos/$REPOSITORY/releases?per_page=100"               --jq '.[] | {tag_name, name, draft, prerelease, created_at, published_at, html_url, assets: [.assets[]? | {name, size, digest, browser_download_url}]}'               | jq -s '.' > backup-out/release-metadata.json
+          else
+            printf '[]\n' > backup-out/release-metadata.json
+          fi
+
+          cat > backup-out/backup-manifest.json <<EOF
+          {
+            "repository": "$REPOSITORY",
+            "commit": "$COMMIT",
+            "short_commit": "$SHORT_COMMIT",
+            "branch": "$GITHUB_REF_NAME",
+            "created_utc": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+            "workflow_run_id": "$GITHUB_RUN_ID",
+            "workflow_run_attempt": "$GITHUB_RUN_ATTEMPT",
+            "artifacts": [
+              "dbai-source-snapshot.tar.gz",
+              "dbai-git-mirror.bundle",
+              "release-metadata.json",
+              "tracked-files.txt"
+            ],
+            "scope_note": "Repository source and reachable Git refs plus release metadata; not GitHub secrets, repository settings, or historical release binary assets."
+          }
+          EOF
+
+          (
+            cd backup-out
+            sha256sum               dbai-source-snapshot.tar.gz               dbai-git-mirror.bundle               release-metadata.json               tracked-files.txt               backup-manifest.json > SHA256SUMS
+            sha256sum -c SHA256SUMS
+            gzip -t dbai-source-snapshot.tar.gz
+            tar -tzf dbai-source-snapshot.tar.gz >/dev/null
+            git bundle verify "$GITHUB_WORKSPACE/backup-out/dbai-git-mirror.bundle"
+          )
+
+          echo "Artifacts created:"
+          ls -lh backup-out
+          du -sh backup-out
+
+      - name: Publish verified backup release
+        id: publish
+        shell: bash
+        env:
+          BACKUP_TAG: ${{ steps.backup.outputs.tag }}
+          BACKUP_TITLE: ${{ steps.backup.outputs.title }}
+          BACKUP_COMMIT: ${{ steps.backup.outputs.commit }}
+        run: |
+          set -euo pipefail
+          RELEASE_CREATED=0
+          cleanup_partial_release() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              echo "::error::Backup publication failed; attempting to remove the partial backup release and tag."
+              if [[ "$RELEASE_CREATED" == "1" ]]; then
+                gh release delete "$BACKUP_TAG" --repo "$REPOSITORY" --cleanup-tag --yes || true
+              else
+                git push origin ":refs/tags/$BACKUP_TAG" || true
+              fi
+            fi
+            exit "$status"
+          }
+          trap cleanup_partial_release EXIT
+
+          gh release create "$BACKUP_TAG" backup-out/*             --repo "$REPOSITORY"             --target "$BACKUP_COMMIT"             --title "$BACKUP_TITLE"             --notes "Verified DBAI source and Git-history backup. Source commit: $BACKUP_COMMIT. See backup-manifest.json and docs/DBAI-BACKUP-RESTORE.md for scope and restore instructions."             --prerelease
+          RELEASE_CREATED=1
+
+          # Verify the release exists and every expected artifact was uploaded.
+          gh release view "$BACKUP_TAG" --repo "$REPOSITORY" --json tagName,name,assets,url             > backup-out/published-release-verification.json
+          jq -e --arg tag "$BACKUP_TAG" '.tagName == $tag' backup-out/published-release-verification.json >/dev/null
+          for asset in dbai-source-snapshot.tar.gz dbai-git-mirror.bundle release-metadata.json tracked-files.txt backup-manifest.json SHA256SUMS; do
+            jq -e --arg name "$asset" '.assets[] | select(.name == $name)' backup-out/published-release-verification.json >/dev/null
+          done
+
+          echo "Backup release verified: https://github.com/$REPOSITORY/releases/tag/$BACKUP_TAG"
+          trap - EXIT
+
+      - name: Report backup location
+        if: success()
+        run: |
+          echo "## DBAI repository backup verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Repository: `$REPOSITORY`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source commit: `${{ steps.backup.outputs.commit }}`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release: [`${{ steps.backup.outputs.tag }}`](https://github.com/$REPOSITORY/releases/tag/${{ steps.backup.outputs.tag }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifacts: source snapshot, Git bundle, release metadata, tracked file list, manifest, SHA-256 checksums." >> "$GITHUB_STEP_SUMMARY"
