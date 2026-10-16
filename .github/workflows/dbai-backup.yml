@@ -1,6 +1,10 @@
 name: DBAI Repository Backup
 
 on:
+  # Temporary push trigger used to execute and verify the repaired backup workflow.
+  push:
+    paths:
+      - '.github/workflows/dbai-backup.yml'
   workflow_dispatch:
     inputs:
       include_release_metadata:
