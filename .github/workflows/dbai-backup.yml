@@ -8,12 +8,6 @@ on:
         required: true
         type: boolean
         default: true
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/dbai-backup.yml"
-      - "docs/DBAI-BACKUP-RESTORE.md"
 
 permissions:
   contents: write
@@ -28,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.DBAI_RELEASE_TOKEN }}
       REPOSITORY: ${{ github.repository }}
       INCLUDE_RELEASE_METADATA: ${{ github.event_name != 'workflow_dispatch' || inputs.include_release_metadata }}
     steps:
@@ -38,9 +32,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Check preinstalled backup tools
+      - name: Check release token and preinstalled backup tools
         run: |
           set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Add a repository Actions secret named DBAI_RELEASE_TOKEN with repository Contents read/write permission before running backup."
+            exit 1
+          fi
+          gh api "repos/$REPOSITORY" --jq '.full_name'
           command -v git
           command -v gh
           command -v jq
