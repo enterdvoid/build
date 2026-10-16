@@ -49,6 +49,35 @@ jobs:
           gh --version
           jq --version
 
+          # Test actual release-write access before spending time creating the 700+ MB backup.
+          PROBE_TAG="dbai-backup-permission-probe-$GITHUB_RUN_ID"
+          PROBE_RELEASE_ID=""
+          cleanup_probe() {
+            if [[ -n "$PROBE_RELEASE_ID" ]]; then
+              gh api --method DELETE "repos/$REPOSITORY/releases/$PROBE_RELEASE_ID" >/dev/null 2>&1 || true
+            fi
+            gh api --method DELETE "repos/$REPOSITORY/git/refs/tags/$PROBE_TAG" >/dev/null 2>&1 || true
+          }
+          trap cleanup_probe EXIT
+          if ! PROBE_RESPONSE="$(gh api --method POST "repos/$REPOSITORY/releases" \
+            -f tag_name="$PROBE_TAG" \
+            -f target_commitish="$(git rev-parse HEAD)" \
+            -f name="$PROBE_TAG" \
+            -F draft=true 2>&1)"; then
+            echo "::error::DBAI_RELEASE_TOKEN cannot create releases in $REPOSITORY. Edit the fine-grained token so it includes repository 'build' and Contents: Read and write, then update this repository's DBAI_RELEASE_TOKEN secret."
+            echo "$PROBE_RESPONSE"
+            exit 1
+          fi
+          PROBE_RELEASE_ID="$(jq -r '.id // empty' <<< "$PROBE_RESPONSE")"
+          if [[ -z "$PROBE_RELEASE_ID" ]]; then
+            echo "::error::GitHub accepted the release probe but returned no release ID; refusing to start backup."
+            exit 1
+          fi
+          gh api --method DELETE "repos/$REPOSITORY/releases/$PROBE_RELEASE_ID" >/dev/null
+          PROBE_RELEASE_ID=""
+          gh api --method DELETE "repos/$REPOSITORY/git/refs/tags/$PROBE_TAG" >/dev/null 2>&1 || true
+          trap - EXIT
+
       - name: Create source snapshot, Git bundle, and metadata
         id: backup
         shell: bash
