@@ -30,7 +30,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
-      INCLUDE_RELEASE_METADATA: ${{ inputs.include_release_metadata || 'true' }}
+      INCLUDE_RELEASE_METADATA: ${{ github.event_name != 'workflow_dispatch' || inputs.include_release_metadata }}
     steps:
       - name: Checkout complete repository history
         uses: actions/checkout@v4
@@ -121,11 +121,9 @@ jobs:
             status=$?
             if [[ $status -ne 0 ]]; then
               echo "::error::Backup publication failed; attempting to remove the partial backup release and tag."
-              if [[ "$RELEASE_CREATED" == "1" ]]; then
-                gh release delete "$BACKUP_TAG" --repo "$REPOSITORY" --cleanup-tag --yes || true
-              else
-                git push origin ":refs/tags/$BACKUP_TAG" || true
-              fi
+              # Try deleting a release even if gh release create failed halfway through.
+              gh release delete "$BACKUP_TAG" --repo "$REPOSITORY" --cleanup-tag --yes || true
+              git push origin ":refs/tags/$BACKUP_TAG" || true
             fi
             exit "$status"
           }
