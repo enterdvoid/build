@@ -148,7 +148,9 @@ jobs:
             cd "$REMOTE_CHECK_DIR"
             sha256sum -c SHA256SUMS
             gzip -t dbai-source-snapshot.tar.gz
-            git bundle verify dbai-git-mirror.bundle
+            # Verify the downloaded bundle from a clean repository, not the runner's checkout.
+            git init --quiet "$REMOTE_CHECK_DIR/verify-repo"
+            git -C "$REMOTE_CHECK_DIR/verify-repo" bundle verify "$REMOTE_CHECK_DIR/dbai-git-mirror.bundle"
           )
 
           echo "Backup release verified: https://github.com/$REPOSITORY/releases/tag/$BACKUP_TAG"
