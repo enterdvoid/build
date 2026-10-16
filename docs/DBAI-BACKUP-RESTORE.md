@@ -16,9 +16,9 @@ The workflow does not include GitHub Actions secrets, environment secrets, exter
 
 ## Run
 
-Open **Actions → DBAI Repository Backup → Run workflow**. Use the default settings for a complete repository backup.
+First add a repository Actions secret named `DBAI_RELEASE_TOKEN`. The token must be able to read repository metadata and create/delete releases and tags (repository Contents read/write). Do not paste the token into chat or commit it to the repository.
 
-The workflow is also configured to run when its workflow file is pushed to `main`, where GitHub permits the event to start a workflow. If a commit is made using a token that suppresses workflow-triggering events, manually run it from Actions.
+Then open **Actions → DBAI Repository Backup → Run workflow**. Use the default settings for a complete repository backup. The workflow is manual-only to avoid creating a large backup release on every edit.
 
 ## Validation and failure cleanup
 
