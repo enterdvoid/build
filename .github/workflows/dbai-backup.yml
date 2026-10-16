@@ -141,6 +141,16 @@ jobs:
             jq -e --arg name "$asset" '.assets[] | select(.name == $name)' backup-out/published-release-verification.json >/dev/null
           done
 
+          REMOTE_CHECK_DIR="$RUNNER_TEMP/dbai-backup-remote-check"
+          mkdir -p "$REMOTE_CHECK_DIR"
+          gh release download "$BACKUP_TAG" --repo "$REPOSITORY" --dir "$REMOTE_CHECK_DIR"
+          (
+            cd "$REMOTE_CHECK_DIR"
+            sha256sum -c SHA256SUMS
+            gzip -t dbai-source-snapshot.tar.gz
+            git bundle verify dbai-git-mirror.bundle
+          )
+
           echo "Backup release verified: https://github.com/$REPOSITORY/releases/tag/$BACKUP_TAG"
           trap - EXIT
 
