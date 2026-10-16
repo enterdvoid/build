@@ -38,14 +38,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Install backup tools
+      - name: Check preinstalled backup tools
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y jq zstd
+          command -v git
+          command -v gh
+          command -v jq
+          command -v gzip
+          command -v tar
           git --version
           gh --version
-          tar --version | head -n 1
+          jq --version
 
       - name: Create source snapshot, Git bundle, and metadata
         id: backup
