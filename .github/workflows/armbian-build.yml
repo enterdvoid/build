@@ -505,6 +505,20 @@ jobs:
         run: |
           set -euo pipefail
           test -x ./compile.sh || { echo "::error::compile.sh is missing or not executable."; exit 1; }
+          build_version="$(tr -d '\r\n' < VERSION)"
+          if [[ ! "$build_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must be a stable numeric version without suffixes such as -trunk; found '$build_version'."
+            exit 1
+          fi
+          grep -Fxq "REVISION=\"$build_version\"" userpatches/config-default.conf || {
+            echo "::error::REVISION in userpatches/config-default.conf must match VERSION ($build_version)."
+            exit 1
+          }
+          grep -Fxq "IMAGE_VERSION=\"$build_version\"" userpatches/config-default.conf || {
+            echo "::error::IMAGE_VERSION in userpatches/config-default.conf must match VERSION ($build_version)."
+            exit 1
+          }
+          echo "Stable DBAI version verified: $build_version (no -trunk suffix)."
           test -f config/boards/aml-s9xx-box.tvb || { echo "::error::config/boards/aml-s9xx-box.tvb is missing."; exit 1; }
           test -f userpatches/extensions/dbai-branding.sh || { echo "::error::userpatches/extensions/dbai-branding.sh is missing."; exit 1; }
           test -s tools/dbai-vm-import || { echo "::error::tools/dbai-vm-import is missing."; exit 1; }
@@ -673,7 +687,11 @@ jobs:
             exit 1
           fi
           stamp="$(TZ=Asia/Jakarta date -d "$run_started_at" +'%Y-%m-%d_%H-%M')"
-          image_version="26.11.0"
+          image_version="$(tr -d '\r\n' < VERSION)"
+          if [[ ! "$image_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must contain a stable numeric image version without a suffix; found '$image_version'."
+            exit 1
+          fi
           echo "Workflow start time: ${run_started_at} -> ${stamp} (Asia/Jakarta)"
           echo "DBAI image/package version: ${image_version}"
           tag="dbai-armbian-build-${RUN_ID}"
