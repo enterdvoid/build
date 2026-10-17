@@ -6,7 +6,7 @@ Dokumen ini merangkum konfigurasi khusus DBAI yang saat ini tersimpan di branch 
 
 ## 1. Identitas dan versi DBAI
 
-Versi image disetel stabil ke `26.11.0`. Build tidak lagi memakai nilai bertanggal seperti `2026.10.14.26` ataupun suffix `-trunk`.
+Versi image disetel stabil ke `26.11.0`. File sumber `VERSION` juga berisi `26.11.0` (tanpa suffix `-trunk`); workflow mengambil versi release dari file ini dan menghentikan preflight jika formatnya bersuffix atau tidak cocok dengan `REVISION` / `IMAGE_VERSION` di konfigurasi default. Build tidak memakai nilai bertanggal seperti `2026.10.14.26`.
 
 Konfigurasi default berada di `userpatches/config-default.conf`:
 
